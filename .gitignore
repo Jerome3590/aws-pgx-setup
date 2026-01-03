@@ -7,11 +7,13 @@
 .vs/*
 .vscode/*
 *.env
+!env/.env.example
 *.docx
 *.pem
 *.zip
 
 .aws/*
+keys/
 
 local/*
 

@@ -5,6 +5,14 @@ format: html
 editor: visual
 ---
 
+## Prerequisites
+
+Load environment variables before running commands:
+
+```{bash}
+source ../env/load_env.sh
+```
+
 ## Overview
 This document outlines the process of setting up HTTPS access for a static website hosted in an AWS S3 bucket using Route 53 for DNS management and CloudFront for content delivery and SSL termination.
 
@@ -55,8 +63,8 @@ After requesting the certificate, we need to validate domain ownership by adding
 ```{bash}
 # Check the validation records needed for the certificate
 aws acm describe-certificate \
-  --certificate-arn arn:aws:acm:us-east-1:535362115856:certificate/59a5f2eb-4880-46e5-8318-7469c04fc980 \
-  --region us-east-1 \
+  --certificate-arn arn:aws:acm:${AWS_REGION_PRIMARY}:${AWS_ACCOUNT_ID_PRIMARY}:certificate/${ACM_CERTIFICATE_ID} \
+  --region ${AWS_REGION_PRIMARY} \
   --query "Certificate.DomainValidationOptions[0].ResourceRecord"
 ```
 
@@ -126,7 +134,7 @@ aws cloudfront create-distribution \
     "Comment": "jerome-dixon.io HTTPS website",
     "Enabled": true,
     "ViewerCertificate": {
-      "ACMCertificateArn": "arn:aws:acm:us-east-1:535362115856:certificate/59a5f2eb-4880-46e5-8318-7469c04fc980",
+      "ACMCertificateArn": "arn:aws:acm:${AWS_REGION_PRIMARY}:${AWS_ACCOUNT_ID_PRIMARY}:certificate/${ACM_CERTIFICATE_ID}",
       "SSLSupportMethod": "sni-only",
       "MinimumProtocolVersion": "TLSv1.2_2021"
     }

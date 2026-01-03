@@ -7,7 +7,7 @@
         "DataSetIdentifierDeclarations": [
             {
                 "Identifier": "facts",
-                "DataSetArn": "arn:aws:quicksight:us-east-1:535362115856:dataset/dc3135c1-778d-4b3c-a207-c643b36eae98"
+                "DataSetArn": "arn:aws:quicksight:us-east-1:${AWS_ACCOUNT_ID_PRIMARY}:dataset/dc3135c1-778d-4b3c-a207-c643b36eae98"
             }
         ],
         "Sheets": [

@@ -1,6 +1,6 @@
 [
     {
-        "Principal": "arn:aws:quicksight:us-east-1:535362115856:namespace/default",
+        "Principal": "arn:aws:quicksight:us-east-1:${AWS_ACCOUNT_ID_PRIMARY}:namespace/default",
         "Actions": [
             "quicksight:DescribeDashboard",
             "quicksight:ListDashboardVersions",
@@ -8,7 +8,7 @@
         ]
     },
     {
-        "Principal": "arn:aws:quicksight:us-east-1:535362115856:user/default/535362115856",
+        "Principal": "arn:aws:quicksight:us-east-1:${AWS_ACCOUNT_ID_PRIMARY}:user/default/${AWS_ACCOUNT_ID_PRIMARY}",
         "Actions": [
             "quicksight:DescribeDashboard",
             "quicksight:ListDashboardVersions",

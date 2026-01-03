@@ -4,6 +4,14 @@ format: html
 editor: visual
 ---
 
+## Prerequisites
+
+Load environment variables before running commands:
+
+```{bash}
+source ../env/load_env.sh
+```
+
 ## Build Lambda Function w/ECR
 
 ### ECR Repo
@@ -12,7 +20,7 @@ editor: visual
 
 ```{bash eval=FALSE}
 
-aws ecr create-repository --repository-name test_duckdb --profile afrl --region us-east-2
+aws ecr create-repository --repository-name ${ECR_REPOSITORY_NAME} --profile ${AWS_PROFILE} --region ${AWS_REGION_LAMBDA}
 
 ```
 
@@ -20,7 +28,7 @@ aws ecr create-repository --repository-name test_duckdb --profile afrl --region 
 
 ```{bash eval=FALSE}
 
-aws ecr get-login-password --region us-east-2 --profile afrl | docker login --username AWS --password-stdin 650251715690.dkr.ecr.us-east-2.amazonaws.com 
+aws ecr get-login-password --region ${AWS_REGION_LAMBDA} --profile ${AWS_PROFILE} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID_LAMBDA}.dkr.ecr.${AWS_REGION_LAMBDA}.amazonaws.com 
 
 ```
 ```{bash eval=FALSE}
@@ -31,13 +39,13 @@ docker build -t duckdb-tester -f Dockerfile.duckdb_test .
 
 ```{bash eval=FALSE}
 
-docker tag duckdb-tester:latest 650251715690.dkr.ecr.us-east-2.amazonaws.com/test_duckdb:latest
+docker tag duckdb-tester:latest ${AWS_ACCOUNT_ID_LAMBDA}.dkr.ecr.${AWS_REGION_LAMBDA}.amazonaws.com/${ECR_REPOSITORY_NAME}:${ECR_IMAGE_TAG}
 
 ```
 
 ```{bash eval=FALSE}
 
-docker push 650251715690.dkr.ecr.us-east-2.amazonaws.com/test_duckdb:latest
+docker push ${AWS_ACCOUNT_ID_LAMBDA}.dkr.ecr.${AWS_REGION_LAMBDA}.amazonaws.com/${ECR_REPOSITORY_NAME}:${ECR_IMAGE_TAG}
 
 ```
 
@@ -46,15 +54,15 @@ docker push 650251715690.dkr.ecr.us-east-2.amazonaws.com/test_duckdb:latest
 ```{bash}
 
 aws lambda create-function \
-    --function-name duckdb-os-tester \
-    --code ImageUri=650251715690.dkr.ecr.us-east-2.amazonaws.com/test_duckdb:latest \
-    --role arn:aws:iam::650251715690:role/afrl-lambda \
+    --function-name ${LAMBDA_FUNCTION_NAME} \
+    --code ImageUri=${AWS_ACCOUNT_ID_LAMBDA}.dkr.ecr.${AWS_REGION_LAMBDA}.amazonaws.com/${ECR_REPOSITORY_NAME}:${ECR_IMAGE_TAG} \
+    --role ${LAMBDA_ROLE_ARN} \
     --package-type Image \
     --publish \
     --timeout 900 \
     --memory-size 256 \
-    --region us-east-2 \
-    --profile afrl
+    --region ${AWS_REGION_LAMBDA} \
+    --profile ${AWS_PROFILE}
 
 
 ```
@@ -63,7 +71,7 @@ aws lambda create-function \
 
 ```{bash eval=FALSE}
 
-aws ecr get-login-password --region us-east-2 --profile afrl | docker login --username AWS --password-stdin 650251715690.dkr.ecr.us-east-2.amazonaws.com 
+aws ecr get-login-password --region ${AWS_REGION_LAMBDA} --profile ${AWS_PROFILE} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID_LAMBDA}.dkr.ecr.${AWS_REGION_LAMBDA}.amazonaws.com 
 
 ```
 
@@ -75,23 +83,23 @@ docker build -t duckdb-tester -f Dockerfile.duckdb_test .
 
 ```{bash eval=FALSE}
 
-docker tag duckdb-tester:latest 650251715690.dkr.ecr.us-east-2.amazonaws.com/test_duckdb:latest
+docker tag duckdb-tester:latest ${AWS_ACCOUNT_ID_LAMBDA}.dkr.ecr.${AWS_REGION_LAMBDA}.amazonaws.com/${ECR_REPOSITORY_NAME}:${ECR_IMAGE_TAG}
 
 ```
 
 ```{bash eval=FALSE}
 
-docker push 650251715690.dkr.ecr.us-east-2.amazonaws.com/test_duckdb:latest
+docker push ${AWS_ACCOUNT_ID_LAMBDA}.dkr.ecr.${AWS_REGION_LAMBDA}.amazonaws.com/${ECR_REPOSITORY_NAME}:${ECR_IMAGE_TAG}
 
 ```
 
 ```{bash eval=FALSE}
 
 aws lambda update-function-code \
-    --function-name duckdb-os-tester \
-    --image-uri 650251715690.dkr.ecr.us-east-2.amazonaws.com/test_duckdb:latest \
+    --function-name ${LAMBDA_FUNCTION_NAME} \
+    --image-uri ${AWS_ACCOUNT_ID_LAMBDA}.dkr.ecr.${AWS_REGION_LAMBDA}.amazonaws.com/${ECR_REPOSITORY_NAME}:${ECR_IMAGE_TAG} \
     --publish \
-    --region us-east-2 \
-    --profile afrl
+    --region ${AWS_REGION_LAMBDA} \
+    --profile ${AWS_PROFILE}
 
 ```

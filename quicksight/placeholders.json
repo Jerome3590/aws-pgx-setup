@@ -1,34 +1,34 @@
 [
     {
         "Identifier": "final_features",
-        "DataSetArn": "arn:aws:quicksight:us-east-1:535362115856:dataset/9e30661a-aaf7-400e-ae54-9e349b6df1d7"
+        "DataSetArn": "arn:aws:quicksight:us-east-1:${AWS_ACCOUNT_ID_PRIMARY}:dataset/9e30661a-aaf7-400e-ae54-9e349b6df1d7"
     },
     {
         "Identifier": "association_rules_cpt",
-        "DataSetArn": "arn:aws:quicksight:us-east-1:535362115856:dataset/c2e83538-3baa-4a15-b738-7ab7255a499f"
+        "DataSetArn": "arn:aws:quicksight:us-east-1:${AWS_ACCOUNT_ID_PRIMARY}:dataset/c2e83538-3baa-4a15-b738-7ab7255a499f"
     },
     {
         "Identifier": "association_rules_icd",
-        "DataSetArn": "arn:aws:quicksight:us-east-1:535362115856:dataset/6d437350-0117-4452-9e80-88fd29b5ad43"
+        "DataSetArn": "arn:aws:quicksight:us-east-1:${AWS_ACCOUNT_ID_PRIMARY}:dataset/6d437350-0117-4452-9e80-88fd29b5ad43"
     },
     {
         "Identifier": "model1_drugs_loss_table.csv",
-        "DataSetArn": "arn:aws:quicksight:us-east-1:535362115856:dataset/9125d3a1-7701-4eab-a3c5-f35756ceefca"
+        "DataSetArn": "arn:aws:quicksight:us-east-1:${AWS_ACCOUNT_ID_PRIMARY}:dataset/9125d3a1-7701-4eab-a3c5-f35756ceefca"
     },
     {
         "Identifier": "itemsets_updated",
-        "DataSetArn": "arn:aws:quicksight:us-east-1:535362115856:dataset/0138dd99-3b12-4c4a-91b1-4fcd260205ff"
+        "DataSetArn": "arn:aws:quicksight:us-east-1:${AWS_ACCOUNT_ID_PRIMARY}:dataset/0138dd99-3b12-4c4a-91b1-4fcd260205ff"
     },
     {
         "Identifier": "opioid_drug_codes",
-        "DataSetArn": "arn:aws:quicksight:us-east-1:535362115856:dataset/2975e8c9-a8af-4b3d-b270-83d1540a65dc"
+        "DataSetArn": "arn:aws:quicksight:us-east-1:${AWS_ACCOUNT_ID_PRIMARY}:dataset/2975e8c9-a8af-4b3d-b270-83d1540a65dc"
     },
     {
         "Identifier": "association_rules_prescription_drug",
-        "DataSetArn": "arn:aws:quicksight:us-east-1:535362115856:dataset/c69c70b6-2d44-4397-81a6-2a61bf5e0902"
+        "DataSetArn": "arn:aws:quicksight:us-east-1:${AWS_ACCOUNT_ID_PRIMARY}:dataset/c69c70b6-2d44-4397-81a6-2a61bf5e0902"
     },
     {
         "Identifier": "New custom SQL",
-        "DataSetArn": "arn:aws:quicksight:us-east-1:535362115856:dataset/8143a6e2-f3e0-4fd3-8676-05a00137c38c"
+        "DataSetArn": "arn:aws:quicksight:us-east-1:${AWS_ACCOUNT_ID_PRIMARY}:dataset/8143a6e2-f3e0-4fd3-8676-05a00137c38c"
     }
 ]
