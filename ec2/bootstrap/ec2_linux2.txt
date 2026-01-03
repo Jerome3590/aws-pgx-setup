@@ -66,7 +66,7 @@ make -j 8
 make install
 cat << 'EOF' > /tmp/Renvextra
 JAVA_HOME="/usr/lib/jvm/java-1.8.0-amazon-corretto/"
-GITHUB_PAT="ghp_[REMOVED]"
+# GITHUB_PAT should be set via environment variables from secure sources
 PATH="${PWD}:/usr/local/bin:${PATH}"
 EOF
 cat /tmp/Renvextra |  tee -a /usr/local/lib64/R/etc/Renviron

@@ -57,7 +57,7 @@ HBASE_HOME="/usr/lib/hbase"
 HBASE_CONF_DIR="/usr/lib/hbase/conf"
 SPARK_HOME="/usr/lib/spark"
 SPARK_CONF_DIR="/usr/lib/spark/conf"
-GITHUB_PAT="ghp_[REMOVED]"
+# GITHUB_PAT should be set via environment variables from secure sources
 PATH="${PWD}:/usr/local/bin:${PATH}"
 EOF
 
