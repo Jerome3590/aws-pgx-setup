@@ -1,0 +1,376 @@
+---
+title: "EMR Spot Cluster for PGx Analysis - Wide"
+author: "Jerome Dixon"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+editor: source
+format:
+  html:
+    toc: true
+    toc-depth: 5
+    html-math-method: katex
+    df-print: paged
+    embed-resources: true
+    fontsize: "11pt"
+    code-fold: true
+    code-summary: "Show the code"
+    smooth-scroll: true
+editor_options: 
+  chunk_output_type: inline
+execute:
+  echo: true
+  message: false
+  warning: false
+  eval: false
+---
+
+```{r sync-renv-bash}
+
+library(jsonlite)
+library(here)
+
+cwd <- here::here()
+
+Sys.setenv("CWD"=cwd)
+
+```
+
+### AWS EC2 Spot Advisor
+
+-   # Updated Instance Type Comparison for Memory-Intensive Workloads
+
+This section provides a comparison between x2idn, x2iedn, and x2gd instance types. These are high-memory instances suitable for memory-intensive workloads. The table below shows key differences in specifications and use cases:
+
+| Feature | x2idn | x2iedn | x2gd |
+|------------------------|------------------------|------------------------|------------------------|
+| Architecture | x86_64 (Intel Cascade Lake) | Same | ARM (AWS Graviton2) |
+| Memory per vCPU | ~8 GiB per vCPU | ~16 GiB per vCPU (2x more) | ~16 GiB per vCPU |
+| Memory (2xlarge) | 128 GiB | 256 GiB | 128 GiB |
+| vCPUs (2xlarge) | 8 | 8 | 8 |
+| Instance Storage | NVMe SSD | Larger NVMe SSDs | Local NVMe SSD (474 GB) |
+| Network Bandwidth | Up to 25 Gbps | Higher (Up to 25 Gbps) | Up to 10 Gbps |
+| Use Case Focus | Cost-optimized memory | Max memory performance + bandwidth | Best price-performance for memory workloads |
+| ARM Compatibility | No | No | Required (Graviton2) |
+| Price-Performance | Good | Premium | 20-40% better than x86 equivalents |
+| ENA Express | No | Yes (lower latency, higher throughput) | No |
+
+## Use case recommendations based on instance type characteristics:
+
+**Use x2idn if:**
+- You're looking for a cost-effective high-memory instance with x86 architecture
+- Your workload needs high memory but not the absolute maximum memory bandwidth
+- You're okay with 8 GiB/vCPU and need good network/storage performance
+
+**Use x2iedn if:**
+- You need maximum RAM and super-fast I/O on x86 architecture
+- You're running in-memory databases (SAP HANA, Redis, etc.)
+- You're processing large model training, graph analytics, or real-time analytics
+- You want highest bandwidth & lowest latency networking
+
+**Use x2gd if:**
+- Your application is ARM-compatible
+- You want the best price-performance ratio for memory-intensive workloads
+- You need a good memory-to-CPU ratio (16 GiB/vCPU)
+- Your Spark/database workloads are cost-sensitive but memory-hungry
+- You can trade some network bandwidth for cost savings
+
+The x2gd instances offer an excellent balance of performance and cost for compatible workloads, particularly for data processing pipelines that don't require maximum network throughput.
+
+<https://aws.amazon.com/ec2/spot/instance-advisor/>
+
+```{r}
+
+browseURL("https://aws.amazon.com/ec2/spot/instance-advisor/")
+
+```
+
+
+### Spot Pricing
+
+```{bash}
+
+aws ec2 describe-spot-price-history \
+  --instance-types x2iedn.2xlarge x2iedn.xlarge \
+  --product-descriptions "Linux/UNIX" \
+  --start-time $(date -u +"%Y-%m-%dT%H:%M:%SZ") \
+  --region us-east-1 \
+  --query "SpotPriceHistory[*].[InstanceType,AvailabilityZone,SpotPrice]" \
+  --output table
+
+```
+
+Note: x2iedn.xlarge is preferred 
+
+#### Lowest price Instance Type
+
+```{bash}
+
+instance_type=$(aws ec2 describe-spot-price-history \
+  --instance-types x2iedn.xlarge x2iedn.2xlarge \
+  --product-descriptions "Linux/UNIX" \
+  --start-time $(date -u +"%Y-%m-%dT%H:%M:%SZ") \
+  --region us-east-1 \
+  --query "sort_by(SpotPriceHistory, &SpotPrice)[0].[InstanceType]" \
+  --output text)
+  
+echo "$instance_type"
+echo "$instance_type" > instance.txt
+
+```
+
+#### Lowest Price Availability Zone
+
+```{bash}
+
+instance_id=$(cat instance.txt)
+
+availability_zone=$(aws ec2 describe-spot-price-history \
+  --instance-types $instance_id \
+  --product-descriptions "Linux/UNIX" \
+  --start-time $(date -u +"%Y-%m-%dT%H:%M:%SZ") \
+  --region us-east-1 \
+  --query "sort_by(SpotPriceHistory, &SpotPrice)[0].[AvailabilityZone]" \
+  --output text)
+  
+echo "$availability_zone"
+echo "$availability_zone" > zone.txt
+
+```
+
+-   Subnet for Lowest Price Instance in EMR VPC
+
+```{bash}
+
+zone_id=$(cat zone.txt)
+emr_vpc_id="vpc-0ea3d9b6c6c64d0af"
+  
+aws ec2 describe-subnets \
+  --filters "Name=availability-zone,Values=$zone_id" "Name=vpc-id,Values=$emr_vpc_id" \
+  --query 'Subnets[*].[SubnetId,AvailabilityZone,VpcId]' \
+  --output table
+
+
+```
+
+#### If Subnet Available in EMR VPC
+(if not available - emr_vpc_config.qmd)
+
+```{bash}
+
+zone_id=$(cat zone.txt)
+emr_vpc_id="vpc-0ea3d9b6c6c64d0af"
+  
+vpc_subnet_id=$(aws ec2 describe-subnets \
+  --filters "Name=availability-zone,Values=$zone_id" "Name=vpc-id,Values=$emr_vpc_id" \
+  --query 'Subnets[*].[SubnetId]' \
+  --output text)
+  
+echo "$vpc_subnet_id"
+echo "$vpc_subnet_id" > vpc_subnet.txt
+
+```
+
+
+### x2iedn.xlarge EMR Cluster 
+
+```{bash}
+
+instance_type=$(cat instance.txt)
+
+cat > instance-fleet.json <<EOF
+[
+  {
+    "Name": "MasterFleet",
+    "InstanceFleetType": "MASTER",
+    "TargetOnDemandCapacity": 1,
+    "TargetSpotCapacity": 0,
+    "InstanceTypeConfigs": [
+      {
+        "InstanceType": "$instance_type",
+        "EbsConfiguration": {
+          "EbsBlockDeviceConfigs": [
+            {
+              "VolumeSpecification": {
+                "VolumeType": "gp2",
+                "SizeInGB": 192
+              },
+              "VolumesPerInstance": 4
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "Name": "CoreFleet",
+    "InstanceFleetType": "CORE",
+    "TargetOnDemandCapacity": 25,
+    "TargetSpotCapacity": 75,
+    "InstanceTypeConfigs": [
+      {
+        "InstanceType": "$instance_type",
+        "WeightedCapacity": 1,
+        "EbsConfiguration": {
+            "EbsBlockDeviceConfigs": [
+              {
+                "VolumeSpecification": {
+                  "VolumeType": "gp3",
+                  "SizeInGB": 256,
+                  "Throughput": 250,
+                  "Iops": 3000
+                },
+                "VolumesPerInstance": 1
+              }
+            ]
+         }
+      },
+      {
+        "InstanceType": "r5b.2xlarge",
+        "WeightedCapacity": 8,
+        "EbsConfiguration": {
+            "EbsBlockDeviceConfigs": [
+              {
+                "VolumeSpecification": {
+                  "VolumeType": "gp3",
+                  "SizeInGB": 256,
+                  "Throughput": 250,
+                  "Iops": 3000
+                },
+                "VolumesPerInstance": 1
+              }
+            ]
+          }
+      },
+      {
+        "InstanceType": "r6id.xlarge",
+        "WeightedCapacity": 1,
+        "EbsConfiguration": {
+            "EbsBlockDeviceConfigs": [
+              {
+                "VolumeSpecification": {
+                  "VolumeType": "gp3",
+                  "SizeInGB": 256,
+                  "Throughput": 250,
+                  "Iops": 3000
+                },
+                "VolumesPerInstance": 1
+              }
+            ]
+         }
+      }
+    ],
+    "LaunchSpecifications": {
+      "SpotSpecification": {
+        "TimeoutDurationMinutes": 10,
+        "TimeoutAction": "SWITCH_TO_ON_DEMAND",
+        "AllocationStrategy": "capacity-optimized"
+      }
+    }
+  }
+]
+EOF
+
+```
+
+```{bash}
+
+export aws_account=535362115856
+subnet_id=$(cat vpc_subnet.txt)
+
+
+ec2_attrs=$(cat <<EOF
+{
+  "InstanceProfile": "EMR_EC2_DefaultRole",
+  "EmrManagedMasterSecurityGroup": "sg-0a5260eee9a20654e",
+  "EmrManagedSlaveSecurityGroup": "sg-0f01580b24ea364e1",
+  "ServiceAccessSecurityGroup": "sg-0e25102a082ef38d1",
+  "KeyName": "mushin_pgx",
+  "SubnetIds": [
+  "subnet-0c0e86106b994e07c",
+  "subnet-0a8809358f7fef905",
+  "subnet-0802ec666c4a90f0d",
+  "subnet-03f689fd2cb8cbb2c"
+]
+
+}
+EOF
+)
+
+
+aws emr create-cluster \
+  --name "PGx-Analysis-2025-wide" \
+  --log-uri "s3://aws-logs-535362115856-us-east-1/elasticmapreduce" \
+  --release-label "emr-7.5.0" \
+  --service-role "arn:aws:iam::$aws_account:role/EMR_DefaultRole" \
+  --security-configuration "pgx_emr2" \
+  --managed-scaling-policy '{"ComputeLimits":{"UnitType":"InstanceFleetUnits","MinimumCapacityUnits":25,"MaximumCapacityUnits":120,"MaximumOnDemandCapacityUnits":45,"MaximumCoreCapacityUnits":120}}' \
+  --unhealthy-node-replacement \
+  --ec2-attributes "$ec2_attrs" \
+  --applications Name=Hadoop Name=Hive Name=JupyterEnterpriseGateway Name=Livy Name=Spark \
+  --configurations file://config/emr_config.json \
+  --instance-fleets file://instance-fleet.json \
+  --bootstrap-actions '[{"Args":[],"Name":"pgx","Path":"s3://pgx-repository/emr-config/emr_bootstrap.sh"}]' \
+  --scale-down-behavior "TERMINATE_AT_TASK_COMPLETION" \
+  --ebs-root-volume-size "97" \
+  --auto-termination-policy '{"IdleTimeout":3600}' \
+  --region "us-east-1"
+
+```
+
+
+```{bash}
+
+aws emr create-cluster \
+ --name "pgx-analysis-X2iedn-xlarge" \
+ --log-uri "s3://athena-output-testing-pgx/elasticmapreduce" \
+ --release-label "emr-7.5.0" \
+ --service-role "arn:aws:iam::535362115856:role/EMR_DefaultRole" \
+ --security-configuration "pgx_emr2" \
+ --managed-scaling-policy '{"ComputeLimits":{"UnitType":"InstanceFleetUnits","MinimumCapacityUnits":3,"MaximumCapacityUnits":120,"MaximumOnDemandCapacityUnits":45,"MaximumCoreCapacityUnits":120}}' \
+ --unhealthy-node-replacement \
+ --ec2-attributes '{"InstanceProfile":"EMR_EC2_DefaultRole","EmrManagedMasterSecurityGroup":"sg-0a5260eee9a20654e","EmrManagedSlaveSecurityGroup":"sg-0f01580b24ea364e1","KeyName":"mushin_pgx","ServiceAccessSecurityGroup":"sg-0e25102a082ef38d1","SubnetIds":["subnet-03f689fd2cb8cbb2c"]}' \
+ --applications Name=Hadoop Name=JupyterEnterpriseGateway Name=Livy Name=Spark \
+ --configurations file://config/emr_config.json \
+ --instance-fleets '[{"Name":"Core","InstanceFleetType":"CORE","TargetSpotCapacity":0,"TargetOnDemandCapacity":3,"LaunchSpecifications":{"SpotSpecification":{"TimeoutDurationMinutes":60,"TimeoutAction":"TERMINATE_CLUSTER","AllocationStrategy":"PRICE_CAPACITY_OPTIMIZED"},"OnDemandSpecification":{"AllocationStrategy":"LOWEST_PRICE"}},"InstanceTypeConfigs":[{"WeightedCapacity":4,"EbsConfiguration":{},"BidPriceAsPercentageOfOnDemandPrice":100,"InstanceType":"x2iedn.xlarge"}]},{"Name":"Primary","InstanceFleetType":"MASTER","TargetSpotCapacity":0,"TargetOnDemandCapacity":1,"LaunchSpecifications":{"OnDemandSpecification":{"AllocationStrategy":"LOWEST_PRICE"}},"InstanceTypeConfigs":[{"WeightedCapacity":1,"EbsConfiguration":{},"BidPriceAsPercentageOfOnDemandPrice":100,"InstanceType":"x2iedn.xlarge"}]}]' \
+ --bootstrap-actions '[{"Args":[],"Name":"pgx","Path":"s3://pgx-repository/emr-config/emr_bootstrap.sh"}]' \
+ --scale-down-behavior "TERMINATE_AT_TASK_COMPLETION" \
+ --ebs-root-volume-size "97" \
+ --ebs-root-volume-iops "3000" \
+ --auto-termination-policy '{"IdleTimeout":1800}' \
+ --region "us-east-1"
+ 
+ 
+```
+
+
+
+#### EMR Wide Configuration
+
+```{python eval=FALSE}
+
+
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+from pyspark.sql.types import IntegerType, DoubleType
+from pyspark.sql.functions import col, max as spark_max, min as spark_min
+
+spark = SparkSession.builder \
+    .appName("PGx_Cohort_Dataset_Builder") \
+    .config("spark.master", "yarn") \
+    .config("spark.executor.memory", "16g") \
+    .config("spark.driver.memory", "8g") \
+    .config("spark.executor.memoryOverhead", "6g") \
+    .config("spark.executor.cores", "4") \
+    .config("spark.dynamicAllocation.enabled", "true") \
+    .config("spark.dynamicAllocation.initialExecutors", "10") \
+    .config("spark.dynamicAllocation.minExecutors", "2") \
+    .config("spark.dynamicAllocation.maxExecutors", "200") \
+    .config("spark.dynamicAllocation.executorIdleTimeout", "30s") \
+    .config{"spark.dynamicAllocation.schedulerBacklogTimeout", "0.5s") \
+    .config("spark.jars.packages.resolve.transitive", "true") \
+    .config("spark.executor.extraJavaOptions", "--add-exports java.base/sun.net.util=ALL-UNNAMED") \
+    .config("spark.network.timeout", "1200s") \
+    .config("spark.rpc.askTimeout", "1200s") \
+    .config("spark.sql.adaptive.skewJoin.enabled", "true") \
+    .getOrCreate()
+
+```

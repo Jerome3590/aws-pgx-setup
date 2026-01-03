@@ -1,0 +1,97 @@
+---
+title: "AWS Lambda w/Duck DB"
+format: html
+editor: visual
+---
+
+## Build Lambda Function w/ECR
+
+### ECR Repo
+
+- Create repo
+
+```{bash eval=FALSE}
+
+aws ecr create-repository --repository-name test_duckdb --profile afrl --region us-east-2
+
+```
+
+#### DuckDB Test Lambda
+
+```{bash eval=FALSE}
+
+aws ecr get-login-password --region us-east-2 --profile afrl | docker login --username AWS --password-stdin 650251715690.dkr.ecr.us-east-2.amazonaws.com 
+
+```
+```{bash eval=FALSE}
+
+docker build -t duckdb-tester -f Dockerfile.duckdb_test .
+
+```
+
+```{bash eval=FALSE}
+
+docker tag duckdb-tester:latest 650251715690.dkr.ecr.us-east-2.amazonaws.com/test_duckdb:latest
+
+```
+
+```{bash eval=FALSE}
+
+docker push 650251715690.dkr.ecr.us-east-2.amazonaws.com/test_duckdb:latest
+
+```
+
+### Create Function
+
+```{bash}
+
+aws lambda create-function \
+    --function-name duckdb-os-tester \
+    --code ImageUri=650251715690.dkr.ecr.us-east-2.amazonaws.com/test_duckdb:latest \
+    --role arn:aws:iam::650251715690:role/afrl-lambda \
+    --package-type Image \
+    --publish \
+    --timeout 900 \
+    --memory-size 256 \
+    --region us-east-2 \
+    --profile afrl
+
+
+```
+
+### Update Function
+
+```{bash eval=FALSE}
+
+aws ecr get-login-password --region us-east-2 --profile afrl | docker login --username AWS --password-stdin 650251715690.dkr.ecr.us-east-2.amazonaws.com 
+
+```
+
+```{bash eval=FALSE}
+
+docker build -t duckdb-tester -f Dockerfile.duckdb_test .
+
+```
+
+```{bash eval=FALSE}
+
+docker tag duckdb-tester:latest 650251715690.dkr.ecr.us-east-2.amazonaws.com/test_duckdb:latest
+
+```
+
+```{bash eval=FALSE}
+
+docker push 650251715690.dkr.ecr.us-east-2.amazonaws.com/test_duckdb:latest
+
+```
+
+```{bash eval=FALSE}
+
+aws lambda update-function-code \
+    --function-name duckdb-os-tester \
+    --image-uri 650251715690.dkr.ecr.us-east-2.amazonaws.com/test_duckdb:latest \
+    --publish \
+    --region us-east-2 \
+    --profile afrl
+
+```

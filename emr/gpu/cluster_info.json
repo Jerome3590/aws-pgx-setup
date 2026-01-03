@@ -1,0 +1,19 @@
+{
+    "Clusters": [
+        {
+            "Id": "j-7G6R9LG9ZGGQ",
+            "Name": "pgx-analysis-gpu",
+            "Status": {
+                "State": "BOOTSTRAPPING",
+                "StateChangeReason": {
+                    "Message": "Running bootstrap actions"
+                },
+                "Timeline": {
+                    "CreationDateTime": "2025-05-03T11:59:18.164000-04:00"
+                }
+            },
+            "NormalizedInstanceHours": 0,
+            "ClusterArn": "arn:aws:elasticmapreduce:us-east-1:535362115856:cluster/j-7G6R9LG9ZGGQ"
+        }
+    ]
+}

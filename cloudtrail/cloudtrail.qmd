@@ -1,0 +1,20 @@
+---
+title: "Cloudtrail"
+format: html
+editor: visual
+---
+
+```{bash}
+
+aws cloudtrail describe-trails --query 'trailList[*].[Name,HomeRegion,S3BucketName,IsMultiRegionTrail,IncludeGlobalServiceEvents]' --output table
+
+
+```
+
+```{bash}
+
+aws s3 ls s3://aws-cloudtrail-logs-535362115856-5275fbad/AWSLogs/535362115856/CloudTrail/us-east-1/ --recursive | tail -n 10
+
+
+```
+

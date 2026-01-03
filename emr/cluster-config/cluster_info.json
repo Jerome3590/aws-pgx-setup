@@ -1,0 +1,19 @@
+{
+    "Clusters": [
+        {
+            "Id": "j-38B4PTDE75ZVW",
+            "Name": "PGx_emR",
+            "Status": {
+                "State": "BOOTSTRAPPING",
+                "StateChangeReason": {
+                    "Message": "Running bootstrap actions"
+                },
+                "Timeline": {
+                    "CreationDateTime": "2024-10-29T08:47:39.562000-04:00"
+                }
+            },
+            "NormalizedInstanceHours": 0,
+            "ClusterArn": "arn:aws:elasticmapreduce:us-east-1:535362115856:cluster/j-38B4PTDE75ZVW"
+        }
+    ]
+}

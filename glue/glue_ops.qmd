@@ -1,0 +1,433 @@
+---
+title: "AWS Glue"
+format: html
+editor: visual
+---
+
+# AWS Glue Data Organization and Crawler Management
+
+This notebook contains a workflow to address the issue of AWS Glue crawlers creating hundreds of tables due to different file types and schemas in the same S3 bucket. The solution involves three main steps:
+
+1. Reorganizing files in S3 by type
+2. Cleaning up existing hash-suffixed tables
+3. Creating new crawlers with proper configuration
+
+## Why Option 2 is Better for QuickSight
+
+Option 2 (Pre-partitioned Folders per File Type) is better suited for AWS QuickSight datasets for several technical reasons:
+
+1. **Dataset Organization**:
+   - Each file type gets its own crawler, creating separate, clean tables
+   - This matches QuickSight's dataset model where each dataset typically represents one type of data
+   - Makes it easier to create and manage distinct datasets in QuickSight
+
+2. **Partition Handling**:
+   - The partition structure (cohort_name, age_band, event_year) is preserved
+   - QuickSight can efficiently use these partitions for filtering and query optimization
+   - Partitions are consistent within each file type, making it easier to create calculated fields
+
+3. **Performance**:
+   - When using SPICE, QuickSight can more efficiently refresh data from organized folders
+   - Direct query performance is better as it can target specific file types
+   - Partition pruning works more effectively with this structure
+
+4. **Maintenance**:
+   - Easier to update individual datasets without affecting others
+   - Simpler to manage permissions at the file type level
+   - Cleaner to track changes and versions
+
+## Recommended Directory Structure Options
+
+### Option 1: Separate File Types into Distinct Subfolders
+
+Move each file into a file-type-specific subfolder while preserving partition structure:
+
+```
+.../cohort_name=ed_non_opioid/age_band=0-12/event_year=2016/
+    ├── itemsets/
+    │   └── itemsets.parquet
+    ├── rules/
+    │   └── rules.parquet
+    └── manifest/
+        └── feature_manifest.json
+```
+
+Benefits:
+- One crawler per file type
+- Clean partition detection (cohort_name, age_band, event_year)
+- Zero schema conflicts
+- Maintains logical grouping of related files
+
+### ✅ Option 2: Pre-partitioned Folders per File Type (Recommended for QuickSight)
+
+Alternative organization with file types at the top level:
+
+```
+s3://pgxdatalake/cohorts-feature-engineered/
+    ├── itemsets_parquet/              # File type folder
+    │   └── cohort_name=ed_non_opioid/age_band=0-12/event_year=2016/itemsets.parquet
+    ├── itemsets_json/                 # File type folder
+    │   └── cohort_name=ed_non_opioid/age_band=0-12/event_year=2016/itemsets.json
+    ├── rules_parquet/                 # File type folder
+    │   └── cohort_name=ed_non_opioid/age_band=0-12/event_year=2016/rules.parquet
+    ├── rules_json/                    # File type folder
+    │   └── cohort_name=ed_non_opioid/age_band=0-12/event_year=2016/rules.json
+    └── manifest/                      # File type folder
+        └── cohort_name=ed_non_opioid/age_band=0-12/event_year=2016/feature_manifest.json
+```
+
+Benefits for QuickSight:
+- Clear separation of file types makes it easier to create distinct QuickSight datasets
+- Each file type gets its own crawler, resulting in clean table definitions
+- Consistent partition structure enables efficient filtering in QuickSight
+- Simplified permission management for different QuickSight user groups
+- Better performance for QuickSight SPICE refreshes due to organized data structure
+- Easier to maintain and update individual datasets without affecting others
+
+## Current Implementation
+
+The current implementation follows Option 2, with the following structure:
+
+```
+s3://pgxdatalake/cohorts-feature-engineered/
+├── itemsets_parquet/                  # File type folder
+│   ├── cohort_name=ed_non_opioid/     # Partition
+│   │   ├── age_band=0-12/            # Partition
+│   │   │   ├── event_year=2016/      # Partition
+│   │   │   │   └── itemsets.parquet  # Actual file
+│   │   │   └── event_year=2017/
+│   │   │       └── itemsets.parquet
+│   │   └── age_band=13-17/
+│   │       └── event_year=2016/
+│   │           └── itemsets.parquet
+│   └── cohort_name=ed_opioid/
+│       └── ...
+├── itemsets_json/                     # File type folder
+│   └── ...
+├── rules_parquet/                     # File type folder
+│   └── ...
+├── rules_json/                        # File type folder
+│   └── ...
+└── manifest/                          # File type folder
+    └── ...
+```
+
+Key points about the structure:
+1. Files are organized by type and format (e.g., itemsets_parquet, itemsets_json) at the top level
+2. Each type folder maintains the same partition structure (cohort_name, age_band, event_year)
+3. Partitions are consistent across all file types
+4. Each file type gets its own crawler, but with compatible schemas
+
+This structure helps the Glue crawler:
+- Create fewer, more meaningful tables
+- Maintain consistent partitioning
+- Handle schema changes gracefully
+- Keep related data organized together
+
+## Implementation Details
+
+The implementation includes two main functions:
+
+1. `reorganize_files_by_type`: General file reorganization
+   - Handles all file types
+   - Creates type-specific folders based on file extensions
+   - Maintains partition structure
+   - Special handling for HTML files
+
+2. `patch_itemsets_and_rules`: Specific handling for itemsets and rules
+   - Focuses on itemsets.parquet, itemsets.json, rules.parquet, and rules.json
+   - Creates separate folders for each file type and format
+   - Ensures consistent partition structure
+   - Helps prevent schema conflicts in Glue crawlers
+
+The workflow is:
+1. Run `reorganize_files_by_type` to handle general file organization
+2. Run `patch_itemsets_and_rules` to ensure proper separation of itemsets and rules files
+3. Create crawlers for each file type folder
+
+```{python}
+
+import boto3
+
+def reorganize_files_by_type(bucket="pgxdatalake", prefix="cohorts-feature-engineered/", dry_run=True):
+    s3 = boto3.client("s3")
+    paginator = s3.get_paginator("list_objects_v2")
+
+    print(f"Scanning S3: s3://{bucket}/{prefix}")
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+
+            if key.endswith("/"):
+                continue  # skip folder markers
+
+            filename = key.split("/")[-1]
+
+            # Determine file_type folder
+            if filename.endswith(".html"):
+                file_type = "html_network_visual"
+            elif "." in filename:
+                file_type = filename.replace(".", "_").lower()  # e.g., itemsets.parquet → itemsets_parquet
+            else:
+                file_type = filename.lower()
+
+            if "=" not in key:
+                print(f"SKIPPED: Not a partitioned file: {key}")
+                continue
+
+            # Extract partition folders
+            parts = key.split("/")
+            partitions = [p for p in parts if "=" in p]
+            if len(partitions) < 3:
+                print(f"SKIPPED: Missing required partitions in key: {key}")
+                continue
+
+            new_key = f"{prefix}{file_type}/{'/'.join(partitions)}/{filename}"
+
+            if key == new_key:
+                print(f"SKIPPED: Already organized: {key}")
+                continue
+
+            print("MOVE:")
+            print(f"  FROM: s3://{bucket}/{key}")
+            print(f"    TO: s3://{bucket}/{new_key}")
+
+            if not dry_run:
+                s3.copy_object(Bucket=bucket, CopySource={'Bucket': bucket, 'Key': key}, Key=new_key)
+                s3.delete_object(Bucket=bucket, Key=key)
+
+    if dry_run:
+        print("DRY RUN COMPLETE: No changes made.")
+    else:
+        print("FILES MOVED: Reorganization complete.")
+
+```
+
+```{python}
+
+# Preview what will be moved
+#reorganize_files_by_type(dry_run=True)
+
+# Actually perform the move
+reorganize_files_by_type(dry_run=False)
+
+```
+
+```{python}
+
+import boto3
+
+def patch_itemsets_and_rules(bucket="pgxdatalake", prefix="cohorts-feature-engineered/", dry_run=True):
+    s3 = boto3.client("s3")
+    paginator = s3.get_paginator("list_objects_v2")
+
+    print(f"Scanning for mixed file types under: s3://{bucket}/{prefix}")
+    file_types_to_patch = {
+        "itemsets.parquet": "itemsets_parquet",
+        "itemsets.json": "itemsets_json",
+        "rules.parquet": "rules_parquet",
+        "rules.json": "rules_json"
+    }
+
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            if key.endswith("/"):
+                continue
+
+            filename = key.split("/")[-1]
+            target_folder = file_types_to_patch.get(filename)
+
+            if not target_folder:
+                continue  # Not a file we are patching
+
+            if "=" not in key:
+                print(f"SKIPPED: Not a partitioned path: {key}")
+                continue
+
+            parts = key.split("/")
+            partitions = [p for p in parts if "=" in p]
+            if len(partitions) < 3:
+                print(f"SKIPPED: Missing partition keys: {key}")
+                continue
+
+            new_key = f"{prefix}{target_folder}/{'/'.join(partitions)}/{filename}"
+            if new_key == key:
+                print(f"SKIPPED: Already moved: {key}")
+                continue
+
+            print("PATCH MOVE:")
+            print(f"  FROM: s3://{bucket}/{key}")
+            print(f"    TO: s3://{bucket}/{new_key}")
+
+            if not dry_run:
+                s3.copy_object(Bucket=bucket, CopySource={'Bucket': bucket, 'Key': key}, Key=new_key)
+                s3.delete_object(Bucket=bucket, Key=key)
+
+    if dry_run:
+        print("DRY RUN COMPLETE: No changes made.")
+    else:
+        print("PATCH COMPLETE: Mixed file types have been separated.")
+
+```
+
+```{python}
+
+# Preview only
+#patch_itemsets_and_rules(dry_run=True)
+
+# Perform actual move
+patch_itemsets_and_rules(dry_run=False)
+
+```
+
+
+```{python}
+
+import boto3
+import re
+
+
+def delete_all_glue_tables_with_hash_suffix(database_name, dry_run=True):
+    """
+    Cleans up existing Glue tables that were created with hash suffixes.
+    
+    The crawler was creating new tables with hash suffixes when schemas changed.
+    This function removes these temporary tables to clean up the database.
+    
+    Args:
+        database_name: Name of the Glue database
+        dry_run: If True, only show what would be deleted without making changes
+    """
+    glue = boto3.client("glue")
+    hash_pattern = re.compile(r"^[a-zA-Z0-9_\-]+_[a-f0-9]{32}$")
+    tables_to_delete = []
+
+    paginator = glue.get_paginator("get_tables")
+    for page in paginator.paginate(DatabaseName=database_name):
+        for table in page["TableList"]:
+            name = table["Name"]
+            if hash_pattern.match(name):
+                tables_to_delete.append(name)
+
+    if not tables_to_delete:
+        print(f"No hash-suffixed tables found in database '{database_name}'.")
+        return
+
+    print(f"Found {len(tables_to_delete)} hash-suffixed table(s) to delete:")
+    for name in tables_to_delete:
+        print(f"  - {name}")
+
+    if dry_run:
+        print("Dry run: no deletions performed.")
+        return
+
+    for name in tables_to_delete:
+        try:
+            glue.delete_table(DatabaseName=database_name, Name=name)
+            print(f"✓ Deleted table: {name}")
+        except Exception as e:
+            print(f"⚠ Failed to delete {name}: {e}")
+
+
+# Delete suffix tables
+delete_all_glue_tables_with_hash_suffix("pgx-network-features", dry_run=False)
+
+```
+
+```{bash}
+
+# Verify the IAM role exists and has proper permissions
+aws iam get-role --role-name AWSGlueServiceRole-pgx-data-model
+
+```
+
+```{python}
+
+import boto3
+import json
+
+
+def create_crawlers_for_partitioned_filetypes(
+    bucket="pgxdatalake",
+    prefix="cohorts-feature-engineered/",
+    role_arn="arn:aws:iam::535362115856:role/service-role/AWSGlueServiceRole-pgx-data-model",
+    database_name="pgx-network-features",
+    region="us-east-1"
+):
+    s3 = boto3.client("s3")
+    glue = boto3.client("glue", region_name=region)
+
+    print(f"Listing top-level file type folders under: s3://{bucket}/{prefix}")
+    paginator = s3.get_paginator("list_objects_v2")
+    file_type_folders = set()
+
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix, Delimiter="/"):
+        for cp in page.get("CommonPrefixes", []):
+            folder_path = cp["Prefix"]
+            file_type = folder_path[len(prefix):].rstrip("/")
+            if not file_type or file_type.endswith(".html"):
+                continue
+            file_type_folders.add(file_type)
+
+    if not file_type_folders:
+        print("No file-type folders found.")
+        return
+
+    print("Found the following file-type folders:")
+    for file_type in sorted(file_type_folders):
+        print(f"  - {file_type}")
+
+    for file_type in sorted(file_type_folders):
+        crawler_name = f"{file_type}_crawler"
+        table_prefix = f"{file_type}_"
+        folder_path = f"s3://{bucket}/{prefix}{file_type}/"
+
+        s3_target = {
+            "Path": folder_path,
+            "Exclusions": ["**/*.html"]
+        }
+
+        config = {
+            "Version": 1.0,
+            "Grouping": {"TableGroupingPolicy": "CombineCompatibleSchemas"}
+        }
+
+        try:
+            glue.create_crawler(
+                Name=crawler_name,
+                Role=role_arn,
+                DatabaseName=database_name,
+                Description=f"Crawler for {file_type} table with partitions",
+                Targets={"S3Targets": [s3_target]},
+                TablePrefix=table_prefix,
+                SchemaChangePolicy={
+                    "UpdateBehavior": "UPDATE_IN_DATABASE",
+                    "DeleteBehavior": "DEPRECATE_IN_DATABASE"
+                },
+                RecrawlPolicy={"RecrawlBehavior": "CRAWL_EVERYTHING"},
+                Configuration=json.dumps(config)
+            )
+            print(f"Created crawler: {crawler_name}")
+        except glue.exceptions.AlreadyExistsException:
+            print(f"Crawler already exists: {crawler_name}")
+
+        try:
+            status = glue.get_crawler(Name=crawler_name)["Crawler"]["State"]
+            if status in ("READY", "STOPPING"):
+                glue.start_crawler(Name=crawler_name)
+                print(f"Started crawler: {crawler_name}")
+            else:
+                print(f"Skipping start: {crawler_name} is currently {status}")
+        except Exception as e:
+            print(f"Error checking or starting crawler {crawler_name}: {e}")
+
+
+```
+
+```{python}
+
+create_crawlers_for_partitioned_filetypes()
+
+```
+

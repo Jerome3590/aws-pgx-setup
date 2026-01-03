@@ -1,0 +1,20 @@
+{
+    "Clusters": [
+        {
+            "Id": "j-18BS8II4LUQ17",
+            "Name": "pgx-analysis-ascpt",
+            "Status": {
+                "State": "WAITING",
+                "StateChangeReason": {
+                    "Message": "Cluster ready to run steps."
+                },
+                "Timeline": {
+                    "CreationDateTime": "2024-12-24T09:24:32.377000-05:00",
+                    "ReadyDateTime": "2024-12-24T09:34:28.280000-05:00"
+                }
+            },
+            "NormalizedInstanceHours": 0,
+            "ClusterArn": "arn:aws:elasticmapreduce:us-east-1:535362115856:cluster/j-18BS8II4LUQ17"
+        }
+    ]
+}

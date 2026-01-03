@@ -1,0 +1,47 @@
+---
+title: "Quarto <-> Jupyter"
+author: "Jerome Dixon"
+date: January 29, 2025
+editor: source
+format:
+  html:
+    toc: true
+    toc-depth: 4
+    html-math-method: katex
+    df-print: paged
+    embed-resources: true
+    fontsize: "11pt"
+    code-fold: true
+    code-summary: "Show the code"
+    smooth-scroll: true
+editor_options: 
+  chunk_output_type: inline
+execute:
+  echo: true
+  message: false
+  warning: false
+  eval: false
+---
+
+## Quarto - S3
+
+Orchestration files located here: <s3://pgx-repository/ade-risk-model/>
+
+
+```{bash}
+
+aws s3 ls s3://pgx-repository/ade-risk-model/ --profile pgx
+
+```
+
+
+## Jupyter - S3
+
+EMR Studio Orchestration files located here: <s3://emr-studio-dependencies-emrstudiostoragebucket-r84qxyqp141i/>
+
+
+```{bash}
+
+aws s3 ls s3://emr-studio-dependencies-emrstudiostoragebucket-r84qxyqp141i/ --profile pgx
+
+```

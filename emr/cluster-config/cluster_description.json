@@ -1,0 +1,197 @@
+{
+    "Cluster": {
+        "Id": "j-38B4PTDE75ZVW",
+        "Name": "PGx_emR",
+        "Status": {
+            "State": "BOOTSTRAPPING",
+            "StateChangeReason": {
+                "Message": "Running bootstrap actions"
+            },
+            "Timeline": {
+                "CreationDateTime": "2024-10-29T08:47:39.562000-04:00"
+            }
+        },
+        "Ec2InstanceAttributes": {
+            "Ec2SubnetId": "subnet-07950d9f2eb4d936d",
+            "RequestedEc2SubnetIds": [
+                "subnet-07950d9f2eb4d936d"
+            ],
+            "Ec2AvailabilityZone": "us-east-1a",
+            "RequestedEc2AvailabilityZones": [],
+            "IamInstanceProfile": "EMR_EC2_DefaultRole",
+            "EmrManagedMasterSecurityGroup": "sg-063a1a27f01fac9b1",
+            "EmrManagedSlaveSecurityGroup": "sg-040af67bc708a5425"
+        },
+        "InstanceCollectionType": "INSTANCE_GROUP",
+        "LogUri": "s3n://aws-logs-535362115856-us-east-1/elasticmapreduce/",
+        "ReleaseLabel": "emr-6.15.0",
+        "AutoTerminate": false,
+        "TerminationProtected": true,
+        "UnhealthyNodeReplacement": false,
+        "VisibleToAllUsers": true,
+        "Applications": [
+            {
+                "Name": "Hadoop",
+                "Version": "3.3.6"
+            },
+            {
+                "Name": "Hive",
+                "Version": "3.1.3"
+            },
+            {
+                "Name": "Spark",
+                "Version": "3.4.1"
+            }
+        ],
+        "Tags": [],
+        "ServiceRole": "arn:aws:iam::535362115856:role/EMR_DefaultRole",
+        "NormalizedInstanceHours": 0,
+        "MasterPublicDnsName": "ec2-44-221-159-159.compute-1.amazonaws.com",
+        "Configurations": [
+            {
+                "Classification": "spark-hive-site",
+                "Properties": {
+                    "hive.metastore.client.factory.class": "com.amazonaws.glue.catalog.metastore.AWSGlueDataCatalogHiveClientFactory"
+                }
+            },
+            {
+                "Classification": "hive-site",
+                "Properties": {
+                    "hive.metastore.client.factory.class": "com.amazonaws.glue.catalog.metastore.AWSGlueDataCatalogHiveClientFactory"
+                }
+            }
+        ],
+        "SecurityConfiguration": "pgx_emr2",
+        "ScaleDownBehavior": "TERMINATE_AT_TASK_COMPLETION",
+        "EbsRootVolumeSize": 97,
+        "KerberosAttributes": {},
+        "ClusterArn": "arn:aws:elasticmapreduce:us-east-1:535362115856:cluster/j-38B4PTDE75ZVW",
+        "StepConcurrencyLevel": 1,
+        "PlacementGroups": [],
+        "OSReleaseLabel": "2.0.20241014.0",
+        "BootstrapActions": [
+            {
+                "Name": "pgx",
+                "ScriptPath": "s3://pgx-repository/emr-config/pgx_ade_python312_bootstrap.sh",
+                "Args": []
+            }
+        ],
+        "InstanceGroups": [
+            {
+                "Id": "ig-NRU5Y2O1SXUK",
+                "Name": "Primary",
+                "Market": "ON_DEMAND",
+                "InstanceGroupType": "MASTER",
+                "InstanceType": "m5.16xlarge",
+                "RequestedInstanceCount": 1,
+                "RunningInstanceCount": 0,
+                "Status": {
+                    "State": "BOOTSTRAPPING",
+                    "StateChangeReason": {
+                        "Message": ""
+                    },
+                    "Timeline": {
+                        "CreationDateTime": "2024-10-29T08:47:39.586000-04:00"
+                    }
+                },
+                "Configurations": [],
+                "ConfigurationsVersion": 0,
+                "EbsBlockDevices": [
+                    {
+                        "VolumeSpecification": {
+                            "VolumeType": "gp3",
+                            "Iops": 3000,
+                            "SizeInGB": 100,
+                            "Throughput": 125
+                        },
+                        "Device": "/dev/sdb"
+                    }
+                ],
+                "ShrinkPolicy": {}
+            },
+            {
+                "Id": "ig-2EJPW10YULHK0",
+                "Name": "Core",
+                "Market": "ON_DEMAND",
+                "InstanceGroupType": "CORE",
+                "InstanceType": "m5.16xlarge",
+                "RequestedInstanceCount": 5,
+                "RunningInstanceCount": 0,
+                "Status": {
+                    "State": "BOOTSTRAPPING",
+                    "StateChangeReason": {
+                        "Message": ""
+                    },
+                    "Timeline": {
+                        "CreationDateTime": "2024-10-29T08:47:39.586000-04:00"
+                    }
+                },
+                "Configurations": [],
+                "ConfigurationsVersion": 0,
+                "EbsBlockDevices": [
+                    {
+                        "VolumeSpecification": {
+                            "VolumeType": "gp2",
+                            "SizeInGB": 256
+                        },
+                        "Device": "/dev/sdb"
+                    },
+                    {
+                        "VolumeSpecification": {
+                            "VolumeType": "gp2",
+                            "SizeInGB": 256
+                        },
+                        "Device": "/dev/sdc"
+                    },
+                    {
+                        "VolumeSpecification": {
+                            "VolumeType": "gp2",
+                            "SizeInGB": 256
+                        },
+                        "Device": "/dev/sdd"
+                    },
+                    {
+                        "VolumeSpecification": {
+                            "VolumeType": "gp2",
+                            "SizeInGB": 256
+                        },
+                        "Device": "/dev/sde"
+                    }
+                ],
+                "ShrinkPolicy": {}
+            },
+            {
+                "Id": "ig-34BIAI52WL5X6",
+                "Name": "Task - 1",
+                "Market": "ON_DEMAND",
+                "InstanceGroupType": "TASK",
+                "InstanceType": "m5.16xlarge",
+                "RequestedInstanceCount": 5,
+                "RunningInstanceCount": 0,
+                "Status": {
+                    "State": "PROVISIONING",
+                    "StateChangeReason": {
+                        "Message": ""
+                    },
+                    "Timeline": {
+                        "CreationDateTime": "2024-10-29T08:47:39.586000-04:00"
+                    }
+                },
+                "Configurations": [],
+                "ConfigurationsVersion": 0,
+                "EbsBlockDevices": [
+                    {
+                        "VolumeSpecification": {
+                            "VolumeType": "gp3",
+                            "Iops": 3000,
+                            "SizeInGB": 100,
+                            "Throughput": 125
+                        },
+                        "Device": "/dev/sdb"
+                    }
+                ],
+                "ShrinkPolicy": {}
+            }
+        ]
+    }
+}

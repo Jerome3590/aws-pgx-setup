@@ -1,0 +1,413 @@
+---
+title: "EC2 Start Spot Instance"
+author: "R. Jerome Dixon"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+editor: source
+format:
+  html:
+    toc: true
+    toc-depth: 5
+    html-math-method: katex
+    df-print: paged
+    embed-resources: true
+    fontsize: "11pt"
+    code-fold: true
+    code-summary: "Show the code"
+    smooth-scroll: true
+editor_options:
+  chunk_output_type: inline
+execute:
+  echo: true
+  message: false
+  warning: false
+  eval: true
+---
+
+### Setup local environment
+
+For passing commands between R and Bash environments
+
+```{r sync-renv-bash}
+
+library(jsonlite)
+library(here)
+
+cwd <- here::here()
+
+Sys.setenv("CWD"=cwd)
+
+```
+
+### Diagnose AWS Profile Issues
+
+Since you have admin access, let's verify the `pgx` profile is configured correctly.
+
+```{bash}
+
+echo "=== AWS Profile Diagnostics ==="
+
+# Check if pgx profile exists
+echo "1. Checking AWS profiles:"
+aws configure list-profiles
+
+echo ""
+echo "2. Current pgx profile configuration:"
+aws configure list --profile pgx
+
+echo ""
+echo "3. Testing basic permissions with pgx profile:"
+if aws sts get-caller-identity --profile pgx --region us-east-1; then
+    echo "✅ Profile authentication works"
+else
+    echo "❌ Profile authentication failed"
+fi
+
+echo ""
+echo "4. Testing EC2 permissions specifically:"
+if aws ec2 describe-regions --profile pgx --region us-east-1 --output table; then
+    echo "✅ EC2 permissions work"
+else
+    echo "❌ EC2 permissions failed"
+fi
+
+```
+
+### Check EC2 Instance Profile Issues
+
+The `EC2_Spot` instance profile might not have the required permissions for Elastic IP operations.
+
+```{bash}
+
+echo "=== EC2 Instance Profile Diagnostics ==="
+
+# Check if EC2_Spot instance profile exists and its permissions
+echo "1. Checking EC2_Spot instance profile:"
+if aws iam get-instance-profile --instance-profile-name EC2_Spot --profile pgx --region us-east-1; then
+    echo "✅ EC2_Spot instance profile exists"
+    
+    # Get the role associated with this instance profile
+    ROLE_NAME=$(aws iam get-instance-profile --instance-profile-name EC2_Spot --profile pgx --region us-east-1 --query 'InstanceProfile.Roles[0].RoleName' --output text)
+    echo "Associated Role: $ROLE_NAME"
+    
+    # Check attached policies
+    echo ""
+    echo "2. Attached managed policies:"
+    aws iam list-attached-role-policies --role-name $ROLE_NAME --profile pgx --region us-east-1 --output table
+    
+    echo ""
+    echo "3. Inline policies:"
+    aws iam list-role-policies --role-name $ROLE_NAME --profile pgx --region us-east-1 --output table
+    
+else
+    echo "❌ EC2_Spot instance profile not found or not accessible"
+fi
+
+```
+
+### Fix EC2 Instance Profile Permissions
+
+If the instance profile lacks Elastic IP permissions, add them:
+
+```{bash}
+
+echo "=== Adding Elastic IP Permissions to EC2_Spot Role ==="
+
+# Get the role name from the instance profile
+ROLE_NAME=$(aws iam get-instance-profile --instance-profile-name EC2_Spot --profile pgx --region us-east-1 --query 'InstanceProfile.Roles[0].RoleName' --output text 2>/dev/null)
+
+if [ "$ROLE_NAME" != "None" ] && [ "$ROLE_NAME" != "null" ] && [ "$ROLE_NAME" != "" ]; then
+    echo "Adding Elastic IP permissions to role: $ROLE_NAME"
+    
+    # Create policy document for Elastic IP operations
+    POLICY_DOC='{
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "ec2:AssociateAddress",
+                    "ec2:DisassociateAddress",
+                    "ec2:DescribeAddresses",
+                    "ec2:DescribeInstances"
+                ],
+                "Resource": "*"
+            }
+        ]
+    }'
+    
+    # Add inline policy to the role
+    if aws iam put-role-policy \
+        --role-name $ROLE_NAME \
+        --policy-name ElasticIPManagement \
+        --policy-document "$POLICY_DOC" \
+        --profile pgx --region us-east-1; then
+        
+        echo "✅ Elastic IP permissions added to EC2_Spot role"
+        echo "Wait 1-2 minutes for permissions to propagate, then retry the IP association"
+    else
+        echo "❌ Failed to add permissions. You may need to do this via AWS Console:"
+        echo "1. Go to IAM → Roles → $ROLE_NAME"
+        echo "2. Add inline policy with EC2 Elastic IP permissions"
+    fi
+else
+    echo "Could not determine role name. Manual fix needed:"
+    echo "1. Go to IAM → Roles → [Your EC2_Spot role]"
+    echo "2. Add policy with ec2:AssociateAddress, ec2:DisassociateAddress permissions"
+fi
+
+```
+
+### Alternative: Use Default Profile
+
+If the `pgx` profile has issues, try using your default admin profile:
+
+```{bash}
+
+echo "=== Testing Default Profile ==="
+
+# Test with default profile (remove --profile pgx)
+echo "1. Default profile identity:"
+aws sts get-caller-identity --region us-east-1
+
+echo ""
+echo "2. Test Elastic IP move with default profile:"
+if [ -f "${CWD}/allocation_id.txt" ] && [ -f "${CWD}/new_instance_id.txt" ]; then
+    ALLOCATION_ID=$(cat ${CWD}/allocation_id.txt)
+    NEW_INSTANCE_ID=$(cat ${CWD}/new_instance_id.txt)
+    
+    echo "Using default profile to move Elastic IP..."
+    echo "Allocation ID: $ALLOCATION_ID"
+    echo "New Instance: $NEW_INSTANCE_ID"
+    
+    if aws ec2 associate-address \
+      --instance-id $NEW_INSTANCE_ID \
+      --allocation-id $ALLOCATION_ID \
+      --allow-reassociation \
+      --region us-east-1; then
+        
+        echo "✅ Elastic IP successfully moved using default profile!"
+        
+        # Get the public IP for verification
+        PUBLIC_IP=$(aws ec2 describe-addresses \
+          --allocation-ids $ALLOCATION_ID \
+          --region us-east-1 \
+          --query 'Addresses[0].PublicIp' --output text)
+        
+        echo "Your instance is now available at: $PUBLIC_IP"
+    else
+        echo "❌ Still failed with default profile"
+    fi
+else
+    echo "Missing allocation_id.txt or new_instance_id.txt files"
+fi
+
+```
+
+## EC2 Spot Instance Strategy Summary
+
+This document implements a multi-tiered approach for launching EC2 spot instances optimized for pharmacogenomics analysis workloads:
+
+### Instance Specifications
+- **Instance Type**: `x2iedn.8xlarge` (high-memory, NVMe SSD optimized)
+- **AMI**: `ami-02434e92bf508ded3` (pre-configured analysis environment)
+- **Target Use**: Memory-intensive genomic data processing
+
+### Launch Strategies
+
+#### 1. Existing Instance Management
+- Check and restart previously created instances
+- Cost-effective for resuming interrupted work
+
+#### 2. Single AZ Spot Launch
+- Direct spot instance creation in specific availability zone
+- Simple approach for immediate capacity needs
+
+#### 3. Multi-AZ Fleet Strategy (Recommended)
+- **Availability Zones**: Spans us-east-1a, us-east-1b, and us-east-1f
+- **Allocation Strategy**: Capacity-optimized for best availability and pricing
+- **Target Capacity**: Exactly 1 instance total across all zones
+- **Benefits**:
+  - Maximizes chance of successful spot allocation
+  - Automatically selects optimal AZ based on current capacity and pricing
+  - Reduces interruption risk through intelligent placement
+  - Cost optimization through spot market competition
+
+### Key Configuration
+- **Security**: IAM instance profile `EC2_Spot` with appropriate permissions
+- **Access**: SSH key `mushin_pgx` for secure connection
+- **Networking**: Public subnets across multiple AZs for redundancy
+- **Market Type**: 100% spot instances for maximum cost savings
+
+This strategy balances cost optimization, availability, and reliability for large-scale genomic analysis workloads.
+
+---
+
+### Check Instances
+
+```{bash}
+
+aws ec2 describe-instances --query 'Reservations[*].Instances[*].InstanceId' --output json --profile pgx --region us-east-1 | tee ${CWD}/ec2-config/ec2_id.json
+
+```
+
+```{r parse-ec2-cluster-id}
+
+ec2_id_json <- read_json(here("ec2-config","ec2_id.json"))
+
+ec2_id <- as.data.frame(ec2_id_json[[1]][[1]])
+
+names(ec2_id)  <- "ec2_id"
+
+write.table(ec2_id, here("ec2-config","ec2_id.csv"), sep = ";", col.names = FALSE, row.names = FALSE)
+
+ec2_id
+
+# Save as environmental variable
+Sys.setenv("EC2_ID"=ec2_id)
+
+```
+
+### Discover VPC and Subnet Configuration
+
+**Important**: Always use existing VPC and subnets when possible to minimize configuration changes, maintain consistent security groups, routing tables, and network ACLs. Creating new networking components can introduce connectivity issues and require additional security configuration.
+
+#### List Available VPCs
+
+```{bash}
+
+echo "=== Available VPCs ==="
+aws ec2 describe-vpcs \
+  --query 'Vpcs[*].{VpcId:VpcId,CidrBlock:CidrBlock,State:State,IsDefault:IsDefault,Tags:Tags[?Key==`Name`].Value|[0]}' \
+  --output table \
+  --profile pgx --region us-east-1
+
+```
+
+#### List Available Subnets by VPC
+
+```{bash}
+
+echo "=== Available Subnets by VPC ==="
+aws ec2 describe-subnets \
+  --query 'Subnets[*].{VpcId:VpcId,SubnetId:SubnetId,AvailabilityZone:AvailabilityZone,CidrBlock:CidrBlock,PublicIP:MapPublicIpOnLaunch,State:State,Name:Tags[?Key==`Name`].Value|[0]}' \
+  --output table \
+  --profile pgx --region us-east-1
+
+```
+
+#### Save Current Subnet Configuration
+
+```{bash}
+
+# Save subnet details to files for reference
+aws ec2 describe-subnets \
+  --query 'Subnets[*].{SubnetId:SubnetId,VpcId:VpcId,AvailabilityZone:AvailabilityZone,CidrBlock:CidrBlock,PublicIP:MapPublicIpOnLaunch}' \
+  --output json \
+  --profile pgx --region us-east-1 > ${CWD}/vpc/subnets.json
+
+echo "Subnet configuration saved to vpc/subnets.json"
+
+# Extract just subnet IDs for easy reference
+aws ec2 describe-subnets \
+  --query 'Subnets[*].SubnetId' \
+  --output text \
+  --profile pgx --region us-east-1 > ${CWD}/subnet.txt
+
+echo "Subnet IDs saved to subnet.txt"
+
+```
+
+#### Show Security Groups for Reference
+
+```{bash}
+
+echo "=== Security Groups in VPC ==="
+aws ec2 describe-security-groups \
+  --query 'SecurityGroups[*].{GroupId:GroupId,GroupName:GroupName,VpcId:VpcId,Description:Description}' \
+  --output table \
+  --profile pgx --region us-east-1
+
+```
+
+### Start Current Instance
+
+```{bash}
+
+aws ec2 start-instances --instance-ids ${EC2_ID} --profile pgx --region us-east-1
+
+```
+
+#### Run Pre-Configured Spot Instance in Different AZ if Current Instance Not Available
+
+```{bash}
+aws ec2 describe-spot-price-history \
+  --instance-types x2iedn.8xlarge \
+  --product-descriptions "Linux/UNIX" \
+  --start-time $(date -u +"%Y-%m-%dT%H:%M:%SZ") \
+  --region us-east-1
+
+```
+
+Existing preconfigured image: ami-02434e92bf508ded3
+
+### Run in Desired Zone
+
+```{bash}
+
+aws ec2 run-instances \
+  --image-id ami-02434e92bf508ded3 \
+  --instance-type x2iedn.8xlarge \
+  --subnet-id subnet-5de81a53 \
+  --security-group-ids sg-0eb0da772c42415dd \
+  --iam-instance-profile Name=EC2_Spot \
+  --instance-market-options 'MarketType=spot, SpotOptions={SpotInstanceType=persistent, InstanceInterruptionBehavior=stop}' \
+  --key-name mushin_pgx
+
+```
+
+### Run in Available Zone Based on Multiple AZs
+
+```{bash}
+
+LT_JSON=$(cat <<'JSON'
+{
+  "ImageId": "ami-02434e92bf508ded3",
+  "InstanceType": "x2iedn.8xlarge",
+  "SecurityGroupIds": ["sg-0eb0da772c42415dd"],
+  "IamInstanceProfile": {"Name": "EC2_Spot"},
+  "KeyName": "mushin_pgx",
+  "InstanceMarketOptions": {
+    "MarketType": "spot",
+    "SpotOptions": {
+      "SpotInstanceType": "persistent",
+      "InstanceInterruptionBehavior": "stop"
+    }
+  }
+}
+JSON
+)
+
+# Create a lightweight Launch Template on the fly
+LT_ID=$(aws ec2 create-launch-template \
+  --launch-template-name spot-x2iedn-ad-hoc \
+  --version-description base \
+  --launch-template-data "$LT_JSON" \
+  --query "LaunchTemplate.LaunchTemplateId" --output text)
+
+# Use an Instant Fleet with capacity-optimized across all available subnets
+SUBNET_A=subnet-5bfc3416   # us-east-1a public
+SUBNET_B=subnet-95cecbc9   # us-east-1b public (current)
+SUBNET_F=subnet-5de81a53   # us-east-1f public
+
+aws ec2 create-fleet \
+  --type maintain \
+  --launch-template-configs "LaunchTemplateSpecification={LaunchTemplateId=$LT_ID,Version=\$Latest},Overrides=[{SubnetId=$SUBNET_A},{SubnetId=$SUBNET_B},{SubnetId=$SUBNET_F}]" \
+  --spot-options 'AllocationStrategy=capacity-optimized,InstanceInterruptionBehavior=stop' \
+  --target-capacity-specification 'TotalTargetCapacity=1,OnDemandTargetCapacity=0,SpotTargetCapacity=1,DefaultTargetCapacityType=spot'
+
+```
+
+### Go to AWS Console - Associate Elastic IP
+
+- Log In
+- Sync latest code base

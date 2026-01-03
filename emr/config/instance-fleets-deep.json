@@ -1,0 +1,47 @@
+[
+  {
+    "Name": "MasterFleet",
+    "InstanceFleetType": "MASTER",
+    "TargetOnDemandCapacity": 0,
+    "TargetSpotCapacity": 1,
+    "InstanceTypeConfigs": [
+      {
+        "InstanceType": "x2idn.24xlarge",
+        "EbsConfiguration": {
+          "EbsBlockDeviceConfigs": [
+            {
+              "VolumeSpecification": {
+                "VolumeType": "gp2",
+                "SizeInGB": 192
+              },
+              "VolumesPerInstance": 4
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "Name": "CoreFleet",
+    "InstanceFleetType": "CORE",
+    "TargetOnDemandCapacity": 0,
+    "TargetSpotCapacity": 1,
+    "InstanceTypeConfigs": [
+      {
+        "InstanceType": "x2idn.24xlarge",
+        "EbsConfiguration": {
+          "EbsBlockDeviceConfigs": [
+            {
+              "VolumeSpecification": {
+                "VolumeType": "gp2",
+                "SizeInGB": 192
+              },
+              "VolumesPerInstance": 4
+            }
+          ]
+        }
+      }
+    ]
+  }
+]
+

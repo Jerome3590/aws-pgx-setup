@@ -1,0 +1,63 @@
+---
+title: "cloudfront"
+author: "Jerome Dixon"
+format:
+  html:
+    html-math-method: katex
+    df-print: paged
+    embed-resources: true
+    fontsize: "11pt"
+    code-fold: true
+    code-summary: "Show the code"
+    smooth-scroll: true
+editor_options: 
+  chunk_output_type: inline
+execute:
+  echo: true
+  message: false
+  warning: false
+  eval: false
+
+---
+
+### Upload HTML Content to Cloudfront S3 Bucket
+
+s3://jerome-dixon.io/mushin-solutions/quicksight_cross_account.html
+
+
+### Get Signed Cloudfront URL
+
+-   Generate signed URL for browsing (Python code):
+
+```{python eval=FALSE, echo=TRUE}
+
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes, serialization, asymmetric
+from botocore.signers import CloudFrontSigner
+import datetime
+
+def rsa_signer(message):
+    with open('webR_private_key.pem', 'rb') as key_file:
+        private_key = serialization.load_pem_private_key(
+            key_file.read(), password=None, backend=default_backend())
+    return private_key.sign(message, asymmetric.padding.PKCS1v15(), hashes.SHA1())
+
+key_id = 'KH0ZA0Z2LKGN9'
+url = 'https://d39wkmcwjc0jh4.cloudfront.net/mushin-solutions/quicksight_cross_account.html'
+expiration = datetime.datetime.utcnow() + datetime.timedelta(days=5)
+
+cf_signer = CloudFrontSigner(key_id, rsa_signer)
+signed_url = cf_signer.generate_presigned_url(url, date_less_than=expiration)
+print(signed_url)
+
+```
+
+
+```{r}
+
+library(reticulate)
+
+browseURL(py$signed_url)
+
+```
+

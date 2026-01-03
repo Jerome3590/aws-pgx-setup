@@ -1,0 +1,23 @@
+[
+    {
+        "Principal": "arn:aws:quicksight:us-east-1:535362115856:namespace/default",
+        "Actions": [
+            "quicksight:DescribeDashboard",
+            "quicksight:ListDashboardVersions",
+            "quicksight:QueryDashboard"
+        ]
+    },
+    {
+        "Principal": "arn:aws:quicksight:us-east-1:535362115856:user/default/535362115856",
+        "Actions": [
+            "quicksight:DescribeDashboard",
+            "quicksight:ListDashboardVersions",
+            "quicksight:UpdateDashboardPermissions",
+            "quicksight:QueryDashboard",
+            "quicksight:UpdateDashboard",
+            "quicksight:DeleteDashboard",
+            "quicksight:DescribeDashboardPermissions",
+            "quicksight:UpdateDashboardPublishedVersion"
+        ]
+    }
+]

@@ -1,0 +1,426 @@
+---
+title: "APCD Analysis"
+author: "Jerome Dixon"
+date: "11/28/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r load-libraries, message=FALSE, warning=FALSE}
+
+library(readxl)
+library(sparklyr)
+library(dplyr)
+library(magrittr)
+library(DBI)
+library(ggplot2)
+library(tidyverse)
+library(stringr)
+library(here)
+library(aws.s3)
+library(aws.signature)
+library(DOPE)
+library(medExtractR)
+
+```
+
+
+```{sh}
+
+mkdir data
+
+aws s3 cp s3://vhi-apcd/pgx-testing-volume.xlsx data
+
+```
+
+
+```{r Configure-Spark }
+
+#Configure Cluster
+conf <- spark_config()
+conf$'sparklyr.shell.executor-memory' <- "32g" 
+conf$'sparklyr.shell.driver-memory' <- "32g"  
+
+
+conf$spark.executor.cores <- 12       
+conf$spark.executor.memory <- "32g"   
+conf$spark.executor.instances <- 4    
+conf$maximizeResourceAllocation  <- "true"
+conf$spark.default.parellism <- 12    
+conf$spark.memory.fraction <- 0.9
+conf$spark.dynamicAllocation.enabled <- "false"
+conf$sparklyr.defaultPackages <- "org.apache.hadoop:hadoop-aws:3.2.1"
+
+
+sc <- spark_connect(master = "yarn", version = "3.1.2")
+
+```
+
+
+```{r Load APCD-Medical }
+
+apcd_medical_folder <-"s3://vhi-apcd/Medical/"
+
+# Read files into Spark dataframe
+apcd_medical <-spark_read_csv(sc, name = "APCD_Medical", path=apcd_medical_folder, infer_schema = TRUE, header = T, delimiter = ",")
+
+
+# Cache table into memory and create dplyr reference to Spark dataframe
+tbl_cache(sc, 'apcd_medical')
+medical <- tbl(sc, 'apcd_medical')
+
+
+```
+
+
+```{r Load APCD-Pharmacy }
+
+apcd_pharmacy_folder <-"s3://vhi-apcd/Pharmacy/"
+
+# Read files into Spark dataframe
+apcd_pharmacy <-spark_read_csv(sc, name = "APCD_Pharmacy", path=apcd_pharmacy_folder, infer_schema = TRUE, header = T, delimiter = ",")
+
+
+# Cache table into memory and create dplyr reference to Spark dataframe
+tbl_cache(sc, 'apcd_pharmacy')
+pharmacy <- tbl(sc, 'apcd_pharmacy')
+
+
+```
+
+
+```{r Load APCD-Urology }
+
+apcd_urology_folder <-"s3://vhi-apcd/Urology/"
+
+# Read files into Spark dataframe
+apcd_urology <-spark_read_csv(sc, name = "APCD_Urology", path=apcd_urology_folder, infer_schema = TRUE, header = T, delimiter = ",")
+
+
+# Cache table into memory and create dplyr reference to Spark dataframe
+tbl_cache(sc, 'apcd_urology')
+urology <- tbl(sc, 'apcd_urology')
+
+
+```
+
+
+```{r Load Demographics}
+
+demo_folder_files <-"s3a://fda-ade-pgx/FAERS_DB/DEMO/"
+
+# Read files into Spark dataframe
+faers_demographics <-spark_read_csv(sc, name = "FAERS_Demographics", path=demo_folder_files, infer_schema = TRUE, header = T, delimiter = "|")
+
+
+# Cache table into memory and create dplyr reference to Spark dataframe
+tbl_cache(sc, 'faers_demographics')
+demographics <- tbl(sc, 'faers_demographics')
+
+```
+
+
+```{r Load Drugs}
+
+drug_folder_files <- "s3a://fda-ade-pgx/FAERS_DB/DRUG/"
+
+# Read files into Spark dataframe
+faers_drugs <-spark_read_csv(sc, name = "FAERS_Drugs", path=drug_folder_files, infer_schema = TRUE, header = T, delimiter = "|")
+
+
+# Cache table into memory and create dplyr reference to Spark dataframe
+tbl_cache(sc, 'faers_drugs')
+drugs <- tbl(sc, 'faers_drugs')
+
+```
+
+
+```{r Load Indications}
+
+indi_folder_files <- "s3a://fda-ade-pgx/FAERS_DB/INDI/"
+
+# Read files into Spark dataframe
+faers_indications <-spark_read_csv(sc, name = "FAERS_Indications", path=indi_folder_files, infer_schema = TRUE, header = T, delimiter = "|")
+
+# Cache table into memory and create dplyr reference to Spark dataframe
+tbl_cache(sc, 'faers_indications')
+indications <- tbl(sc, 'faers_indications')
+
+```
+
+
+```{r Load Outcomes}
+
+outcome_folder_files <- "s3a://fda-ade-pgx/FAERS_DB/OUTCOME/"
+
+# Read files into Spark dataframe
+faers_outcomes <-spark_read_csv(sc, name = "FAERS_Outcomes", path=outcome_folder_files, infer_schema = TRUE, header = T, delimiter = "|")
+
+# Cache table into memory and create dplyr reference to Spark dataframe
+tbl_cache(sc, 'faers_outcomes')
+outcomes <- tbl(sc, 'faers_outcomes')
+
+```
+
+
+```{r Load Reactions}
+
+react_folder_files <- "s3a://fda-ade-pgx/FAERS_DB/REACTION/"
+
+#Read files into Spark dataframe
+faers_reactions <-spark_read_csv(sc, name = "FAERS_Reactions", path=react_folder_files, infer_schema = TRUE, header = T, delimiter = "|")
+
+# Cache table into memory and create dplyr reference to Spark dataframe
+tbl_cache(sc, 'faers_reactions')
+reactions <- tbl(sc, 'faers_reactions')
+
+```
+
+
+```{r Load Report Sources}
+
+report_sources_folder_files <- "s3a://fda-ade-pgx/FAERS_DB/REPORT_SOURCES/"
+
+# Read files into Spark dataframe
+faers_report_sources <-spark_read_csv(sc, name = "FAERS_Report_Sources", path=report_sources_folder_files, infer_schema = TRUE, header = T, delimiter = "|")
+
+# Cache table into memory and create dplyr reference to Spark dataframe
+tbl_cache(sc, 'faers_report_sources')
+report_sources <- tbl(sc, 'faers_report_sources')
+
+```
+
+
+```{r Load Therapy}
+
+therapy_folder_files <- "s3a://fda-ade-pgx/FAERS_DB/THERAPY/"
+
+# Read files into Spark dataframe
+faers_therapy <-spark_read_csv(sc, name = "FAERS_Therapy", path=therapy_folder_files, infer_schema = TRUE, header = T, delimiter = "|")
+
+# Cache table into memory and create dplyr reference to Spark dataframe
+tbl_cache(sc, 'faers_therapy')
+therapy <- tbl(sc, 'faers_therapy')
+
+```
+
+
+```{r Select Key Variables }
+
+demographics <- demographics %>% select(primaryid, caseid, caseversion, event_dt, mfr_dt, init_fda_dt, fda_dt, mfr_sndr, age, age_cod, sex, wt, wt_cod, rept_dt, occp_cod, reporter_country, occr_country)
+
+drugs <- drugs %>% select(!(c("lot_num", "nda_num", )))
+
+```
+
+
+```{r}
+
+library(DOPE)
+library(medExtractR)
+
+test <- DOPE::lookup_df
+
+```
+
+
+```{r}
+
+largest_drug_name <- data(drug_df) %>% 
+  group_by(drug_df$textdrug) %>% 
+  arrange(desc(textdrug)) %>% 
+  mutate(row_number = row_number()) %>% 
+  filter(row_number == 1) %>% 
+  select(-row_number) %>% 
+  ungroup()
+
+
+```
+
+
+```{r Clean Data }
+
+drugs_market_basket <- drugs %>% 
+  select(primaryid, drugname) %>% 
+  mutate(drugname = regexp_replace(drugname, "[_\"\'():;,.!?\\-]", " ")) %>% 
+  mutate(across(where(is.character),str_trim)) %>% 
+  filter(!(grepl("[^0-9]([0-9]{8})[^0-9]", drugname))) %>% 
+  filter(nchar(drugname) < 20) %>% 
+  mutate(drugname = lower(drugname)) %>%
+  group_by(primaryid) %>%  
+  summarise(drugs = collect_set(drugname)) %>% 
+  sdf_register("drugs_market_basket")
+
+tbl_cache(sc, 'drugs_market_basket')
+drugs_basket <- tbl(sc, 'drugs_market_basket')
+
+```
+
+
+```{r Size of Training Set }
+
+dataset_count <- drugs_market_basket %>% tally()
+
+dataset_count
+
+```
+
+
+```{r All Drugs, message=FALSE, warning=FALSE}
+
+drugs_all <- drugs_market_basket %>% group_by(drugs) %>%
+  tally(., sort = TRUE) %>% 
+  mutate(polypharmacy = size(drugs)) %>% 
+  select(drugs, occurences = n, polypharmacy) %>% 
+  arrange(desc(polypharmacy))
+
+drugs_all
+
+
+
+```
+
+```{r View All Drugs, message=FALSE, warning=FALSE}
+
+view(drugs_all)
+
+```
+
+
+
+```{r All Drugs Sample, message=FALSE, warning=FALSE }
+
+drugs_polypharmacy <- drugs_market_basket %>% group_by(drugs) %>%
+  tally(., sort = TRUE) %>% 
+  mutate(polypharmacy = size(drugs)) %>% 
+  select(drugs, polypharmacy, occurences = n ) %>% 
+  arrange(desc(occurences))
+
+drugs_polypharmacy
+
+```
+
+```{r Drugs Sample, message=FALSE, warning=FALSE}
+
+view(drugs_polypharmacy)
+
+```
+
+
+
+```{r Polypharmacy Drugs By Occurence, message=FALSE, warning=FALSE}
+
+drugs_poly_occurences <- drugs_market_basket %>% group_by(drugs) %>%
+  tally(., sort = TRUE) %>% 
+  mutate(polypharmacy = size(drugs)) %>% 
+  select(drugs, occurences = n, polypharmacy) %>% 
+  group_by(occurences, polypharmacy) %>% 
+  arrange(drugs, desc(occurences)) 
+
+```
+
+
+```{r}
+
+view(drugs_poly_occurences)
+
+```
+
+
+
+```{r Polypharmacy Drugs By Occurence, message=FALSE, warning=FALSE}
+drugs_poly_occurences %>% 
+  group_by(drugs, occurences)
+  arrange(desc(occurences)) 
+  
+drugs_poly_occurences
+
+```
+
+
+```{r Polypharmacy Sample, message=FALSE, warning=FALSE}
+
+view(drugs_poly_occurences)
+
+```
+
+
+```{r Polypharmacy Drugs Sample by Occurence, message=FALSE, warning=FALSE }
+
+drugs_poly_by_occurence_sample25 <- drugs_market_basket %>% group_by(drugs) %>%
+  tally(., sort = TRUE) %>% 
+  mutate(polypharmacy = size(drugs)) %>% 
+  select(drugs, occurences = n, polypharmacy) %>% 
+  sample_n(25) %>% 
+  arrange(desc(occurences)) 
+
+drugs_poly_by_occurence_sample25
+
+
+```
+
+
+```{r Polypharmacy View, message=FALSE, warning=FALSE}
+
+view(drugs_poly_by_occurence_sample25)
+
+```
+
+
+```{r}
+
+outcomes  <- faers_outcomes %>% group_by(outc_cod) %>%
+  tally(., sort = TRUE)
+
+outcomes
+
+
+```
+
+
+```{r Durations  }
+
+durations  <- faers_demographics %>% 
+  left_join(
+  .,
+  faers_therapy,
+  by = c("primaryid","caseid")
+) %>% 
+  left_join(
+  .,
+  faers_outcomes,
+  by = c("primaryid","caseid") 
+) %>% 
+  filter(!is.na(event_dt)) %>% 
+  filter(!is.na(start_dt)) %>% 
+  filter(nchar(start_dt) == 8) %>% 
+  filter(nchar(event_dt) == 8) %>% 
+  mutate(Drug_Date = to_date(as.character(start_dt), "yyyyMMdd")) %>% 
+  mutate(Event_Date = to_date(as.character(event_dt), "yyyyMMdd")) %>% 
+  mutate(Duration = datediff(Event_Date, Drug_Date)) %>% 
+  select(primaryid, caseid, Drug_Date, Event_Date, Duration, age, age_cod, age_grp, sex, wt, wt_cod, outc_cod ) 
+  
+
+durations
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+

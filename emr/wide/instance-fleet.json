@@ -1,0 +1,90 @@
+[
+  {
+    "Name": "MasterFleet",
+    "InstanceFleetType": "MASTER",
+    "TargetOnDemandCapacity": 1,
+    "TargetSpotCapacity": 0,
+    "InstanceTypeConfigs": [
+      {
+        "InstanceType": "x2iedn.xlarge",
+        "EbsConfiguration": {
+          "EbsBlockDeviceConfigs": [
+            {
+              "VolumeSpecification": {
+                "VolumeType": "gp2",
+                "SizeInGB": 192
+              },
+              "VolumesPerInstance": 4
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "Name": "CoreFleet",
+    "InstanceFleetType": "CORE",
+    "TargetOnDemandCapacity": 25,
+    "TargetSpotCapacity": 75,
+    "InstanceTypeConfigs": [
+      {
+        "InstanceType": "x2iedn.xlarge",
+        "WeightedCapacity": 1,
+        "EbsConfiguration": {
+            "EbsBlockDeviceConfigs": [
+              {
+                "VolumeSpecification": {
+                  "VolumeType": "gp3",
+                  "SizeInGB": 256,
+                  "Throughput": 250,
+                  "Iops": 3000
+                },
+                "VolumesPerInstance": 1
+              }
+            ]
+         }
+      },
+      {
+        "InstanceType": "r5b.2xlarge",
+        "WeightedCapacity": 8,
+        "EbsConfiguration": {
+            "EbsBlockDeviceConfigs": [
+              {
+                "VolumeSpecification": {
+                  "VolumeType": "gp3",
+                  "SizeInGB": 256,
+                  "Throughput": 250,
+                  "Iops": 3000
+                },
+                "VolumesPerInstance": 1
+              }
+            ]
+          }
+      },
+      {
+        "InstanceType": "r6id.xlarge",
+        "WeightedCapacity": 1,
+        "EbsConfiguration": {
+            "EbsBlockDeviceConfigs": [
+              {
+                "VolumeSpecification": {
+                  "VolumeType": "gp3",
+                  "SizeInGB": 256,
+                  "Throughput": 250,
+                  "Iops": 3000
+                },
+                "VolumesPerInstance": 1
+              }
+            ]
+         }
+      }
+    ],
+    "LaunchSpecifications": {
+      "SpotSpecification": {
+        "TimeoutDurationMinutes": 10,
+        "TimeoutAction": "SWITCH_TO_ON_DEMAND",
+        "AllocationStrategy": "capacity-optimized"
+      }
+    }
+  }
+]

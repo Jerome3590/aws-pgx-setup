@@ -1,0 +1,16 @@
+{
+  "g4dn.2xlarge": {
+    "vCPUs": 8,
+    "memory": 32,
+    "gpu": 1,
+    "name": "g4dn.2xlarge",
+    "category": "child"
+  },
+  "m4.2xlarge": {
+    "vCPUs": 8,
+    "memory": 32,
+    "gpu": 0,
+    "name": "m4.2xlarge",
+    "category": "parent"
+  }
+}

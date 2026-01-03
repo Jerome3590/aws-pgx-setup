@@ -1,0 +1,181 @@
+---
+title: "Route 53 Setup"
+author: "Jerome Dixon"
+format: html
+editor: visual
+---
+
+## Overview
+This document outlines the process of setting up HTTPS access for a static website hosted in an AWS S3 bucket using Route 53 for DNS management and CloudFront for content delivery and SSL termination.
+
+## Step 1: Verify S3 Bucket Contents
+First, let's verify the contents of our S3 bucket that contains the static website files.
+
+```{bash}
+aws s3 ls jerome-dixon.io/uva/notebooks --recursive
+```
+
+```{r}
+# Original S3 URL before setting up custom domain
+original_url <- 'https://s3.us-east-1.amazonaws.com/jerome-dixon.io/uva/notebooks/lasso_scorecard_model.html'
+browseURL(original_url)
+```
+
+## Step 2: Route 53 Hosted Zone Setup
+We need to identify our Route 53 hosted zone to manage DNS records for our domain.
+
+```{bash}
+aws route53 list-hosted-zones-by-name --dns-name jerome-dixon.io
+```
+
+Note: When creating alias records, they must use the AWS S3 hosted zone ID as the target.
+
+```{bash eval=FALSE}
+# Command to update DNS records using a JSON configuration file
+aws route53 change-resource-record-sets \
+  --hosted-zone-id Z0675623P625MT2KJFTK \
+  --change-batch file://alias_record.json 
+```
+
+## Step 3: SSL Certificate Setup
+To enable HTTPS, we need to request an SSL certificate from AWS Certificate Manager (ACM).
+
+```{bash eval=FALSE}
+# Request a new SSL certificate for our domain
+aws acm request-certificate \
+  --domain-name jerome-dixon.io \
+  --validation-method DNS \
+  --region us-east-1 \
+  --idempotency-token jeromedixoncert \
+  --output json
+```
+
+After requesting the certificate, we need to validate domain ownership by adding DNS records.
+
+```{bash}
+# Check the validation records needed for the certificate
+aws acm describe-certificate \
+  --certificate-arn arn:aws:acm:us-east-1:535362115856:certificate/59a5f2eb-4880-46e5-8318-7469c04fc980 \
+  --region us-east-1 \
+  --query "Certificate.DomainValidationOptions[0].ResourceRecord"
+```
+
+```{bash eval=FALSE}
+# Add the validation record to Route 53
+aws route53 change-resource-record-sets \
+  --hosted-zone-id Z0675623P625MT2KJFTK \
+  --change-batch '{
+    "Changes": [
+      {
+        "Action": "UPSERT",
+        "ResourceRecordSet": {
+          "Name": "_82acef843a5a9b3f1e4a8eedcb0ef9b9.jerome-dixon.io.",
+          "Type": "CNAME",
+          "TTL": 300,
+          "ResourceRecords": [{ "Value": "_afb1e85eb191b5a7ed7f58e44038a6a9.xlfgrmvvlj.acm-validations.aws." }]
+        }
+      }
+    ]
+  }'
+```
+
+## Step 4: CloudFront Distribution Setup
+Create a CloudFront distribution to serve our S3 content with HTTPS.
+
+```{bash eval=FALSE}
+# Create a CloudFront distribution with our SSL certificate
+aws cloudfront create-distribution \
+  --distribution-config '{
+    "CallerReference": "jerome-dixon-https-2025",
+    "Aliases": {
+      "Quantity": 1,
+      "Items": ["jerome-dixon.io"]
+    },
+    "Origins": {
+      "Quantity": 1,
+      "Items": [
+        {
+          "Id": "S3-jerome-dixon.io",
+          "DomainName": "jerome-dixon.io.s3-website-us-east-1.amazonaws.com",
+          "CustomOriginConfig": {
+            "HTTPPort": 80,
+            "HTTPSPort": 443,
+            "OriginProtocolPolicy": "http-only",
+            "OriginSslProtocols": { "Quantity": 1, "Items": ["TLSv1.2"] }
+          }
+        }
+      ]
+    },
+    "DefaultCacheBehavior": {
+      "TargetOriginId": "S3-jerome-dixon.io",
+      "ViewerProtocolPolicy": "redirect-to-https",
+      "AllowedMethods": {
+        "Quantity": 2,
+        "Items": ["GET", "HEAD"],
+        "CachedMethods": {
+          "Quantity": 2,
+          "Items": ["GET", "HEAD"]
+        }
+      },
+      "ForwardedValues": {
+        "QueryString": false,
+        "Cookies": { "Forward": "none" }
+      },
+      "MinTTL": 0
+    },
+    "Comment": "jerome-dixon.io HTTPS website",
+    "Enabled": true,
+    "ViewerCertificate": {
+      "ACMCertificateArn": "arn:aws:acm:us-east-1:535362115856:certificate/59a5f2eb-4880-46e5-8318-7469c04fc980",
+      "SSLSupportMethod": "sni-only",
+      "MinimumProtocolVersion": "TLSv1.2_2021"
+    }
+  }'
+```
+
+## Step 5: Update Route 53 with CloudFront Distribution
+Finally, update Route 53 to point to our CloudFront distribution.
+
+```{bash}
+# Update the A record to point to CloudFront
+aws route53 change-resource-record-sets \
+  --hosted-zone-id Z0675623P625MT2KJFTK \
+  --change-batch '{
+    "Changes": [
+      {
+        "Action": "UPSERT",
+        "ResourceRecordSet": {
+          "Name": "jerome-dixon.io.",
+          "Type": "A",
+          "AliasTarget": {
+            "HostedZoneId": "Z2FDTNDATAQYW2",
+            "DNSName": "d2ydx9ea92vqb8.cloudfront.net.",
+            "EvaluateTargetHealth": false
+          }
+        }
+      }
+    ]
+  }'
+```
+
+## Verification
+Let's verify our setup by checking the DNS records and testing the HTTPS connection.
+
+```{bash}
+# Check the A record in Route 53
+aws route53 list-resource-record-sets \
+  --hosted-zone-id Z0675623P625MT2KJFTK \
+  --query "ResourceRecordSets[?Name == 'jerome-dixon.io.']"
+```
+
+```{bash}
+# Test HTTPS connection
+curl -I https://jerome-dixon.io
+```
+
+```{r}
+# Test the final HTTPS URL
+https_url <- 'https://jerome-dixon.io/uva/notebooks/lasso_scorecard_model.html'
+browseURL(https_url)
+```
+

@@ -1,0 +1,31 @@
+---
+title: "S3 Operations"
+format: html
+editor: visual
+---
+
+```{bash}
+
+aws s3api list-objects-v2 --bucket vr-sling --prefix "Southeast+Regional+Fellows+Course/"
+
+```
+
+```{bash}
+
+aws s3 ls s3://vr-sling/ --recursive
+
+```
+
+```{bash}
+
+aws s3api list-objects-v2 \
+  --bucket vr-sling \
+  --prefix "Southeast Regional Fellows Course/"
+
+```
+```{bash}
+
+aws s3api list-objects-v2 --bucket vr-sling --delimiter "/" | grep Prefix
+
+```
+

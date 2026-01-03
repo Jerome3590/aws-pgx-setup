@@ -1,0 +1,158 @@
+---
+title: "EMR VPC"
+format: html
+editor: visual
+---
+
+#### If Subnet Not Available
+
+##### Describe EMR VPC
+
+```{bash}
+
+vpc_id="vpc-0ea3d9b6c6c64d0af"
+
+aws ec2 describe-vpcs \
+  --vpc-ids "$vpc_id" \
+  --query 'Vpcs[*].[VpcId,CidrBlock,State,IsDefault]' \
+  --output table
+
+```
+`
+
+##### Add New Subnet
+
+```{bash eval=FALSE}
+
+vpc_id="vpc-0ea3d9b6c6c64d0af"
+
+aws ec2 create-subnet \
+  --vpc-id "$vpc_id" \
+  --cidr-block 172.31.160.0/20 \
+  --availability-zone us-east-1f \
+  --tag-specifications 'ResourceType=subnet,Tags=[{Key=Name,Value=emr-studio-private-us-east-1f}]'
+
+
+```
+
+
+```{bash}
+
+aws ec2 describe-subnets \
+  --filters Name=vpc-id,Values=vpc-0ea3d9b6c6c64d0af \
+           Name=tag:Name,Values=emr-studio-private-us-east-1f \
+  --query "Subnets[*].SubnetId" \
+  --output text > vpc_subnet.txt
+
+```
+
+- Ensure private
+
+```{bash}
+
+subnet_id=$(cat vpc_subnet.txt)
+
+aws ec2 modify-subnet-attribute \
+  --subnet-id "$subnet_id" \
+  --no-map-public-ip-on-launch
+
+
+```
+
+##### Link Subnet to Routing Table
+
+- Must use NAT Gateway
+
+```{bash}
+
+vpc_id="vpc-0ea3d9b6c6c64d0af"
+subnet_id=$(cat new_subnet.txt)
+
+aws ec2 describe-route-tables \
+  --filters Name=vpc-id,Values="$vpc_id" \
+            Name=route.nat-gateway-id,Values=* \
+  --query 'RouteTables[*].{RouteTableId:RouteTableId,NatGatewayId:Routes[?NatGatewayId]|[0].NatGatewayId}' \
+  --output table
+
+
+```
+
+
+```{bash}
+
+aws ec2 describe-route-tables \
+  --filters Name=route.nat-gateway-id,Values=* \
+  --query 'RouteTables[0].RouteTableId' \
+  --output text > route_table.txt
+
+
+```
+
+- Update to use Routing Table with NAT Gateway
+
+```{bash}
+
+subnet_id=$(cat new_subnet.txt)
+route_table_id=$(cat route_table.txt)
+
+aws ec2 associate-route-table \
+  --subnet-id "$subnet_id" \
+  --route-table-id "$route_table_id"
+
+
+```
+
+
+```{bash}
+
+zone_id=$(cat zone.txt)
+
+subnet_id=$(aws ec2 describe-subnets \
+  --filters "Name=availability-zone,Values=$zone_id" \
+  --query 'Subnets[*].[SubnetId]' \
+  --output text)
+
+echo "$subnet_id"
+echo "$subnet_id" > vpc_subnet.txt
+
+```
+
+```{python}
+
+import boto3
+from collections import defaultdict
+import json
+
+ec2 = boto3.client("ec2", region_name="us-east-1")
+vpc_id="vpc-0ea3d9b6c6c64d0af"
+
+response = ec2.describe_subnets(
+    Filters=[
+        {"Name": "vpc-id", "Values": [vpc_id]},
+        {"Name": "state", "Values": ["available"]}
+    ]
+)
+
+subnet_by_az = defaultdict(list)
+
+for subnet in response["Subnets"]:
+    az = subnet["AvailabilityZone"]
+    subnet_by_az[az].append(subnet["SubnetId"])
+
+# Optionally pick one subnet per AZ
+placement_subnets = [subs[0] for subs in subnet_by_az.values()]
+
+# Create structured output
+output_serializable = {
+    "subnets_by_az": {az: subs for az, subs in subnet_by_az.items()},
+    "placement_subnets": placement_subnets
+}
+
+output_json = json.dumps(output_serializable, indent=2)
+output_text = "\n".join(f"{az}: {subs}" for az, subs in subnet_by_az.items())
+
+output_json, output_text
+
+
+```
+

@@ -1,0 +1,144 @@
+---
+title: "CloudWatch Logs"
+author: "Jerome Dixon"
+format: html
+editor: visual
+---
+
+```{r}
+
+library(here)
+library(reticulate)
+
+```
+
+### CloudWatch Log Groups
+
+```{python}
+
+import os
+import boto3
+
+# Create a CloudWatch Logs client
+client = boto3.client('logs')
+
+# Initialize an empty list to store log group names
+log_group_names = []
+
+# Use pagination to get all log groups
+paginator = client.get_paginator('describe_log_groups')
+for page in paginator.paginate():
+    for log_group in page['logGroups']:
+        log_group_names.append(log_group['logGroupName'])
+
+# Print the list of log group names
+print(log_group_names)
+
+```
+
+```{python}
+
+# Apply retention policy for each log group
+for log_group in log_group_names:
+    command = f"aws logs put-retention-policy --log-group-name {log_group} --retention-in-days 30"
+    os.system(command)
+
+```
+
+```{bash}
+
+aws logs describe-log-groups --query 'logGroups[].[logGroupName, retentionInDays]' --output table
+
+```
+
+```{bash}
+aws logs describe-log-groups
+```
+
+### AWS Services Calling KMS
+
+```{bash}
+
+aws cloudtrail lookup-events \
+  --lookup-attributes AttributeKey=EventSource,AttributeValue=kms.amazonaws.com \
+  --query 'Events[*].CloudTrailEvent' \
+  --output text | jq -s -r '.[] | .userIdentity.invokedBy' > kms_logs.txt
+
+```
+
+```{bash}
+
+aws cloudtrail lookup-events --lookup-attributes AttributeKey=EventSource,AttributeValue=kms.amazonaws.com --max-results 100 > kms-events.txt
+
+```
+
+
+```{bash}
+
+set -euo pipefail
+
+# Force use of jq 1.7 from Windows Chocolatey
+export PATH="/c/ProgramData/chocolatey/bin:$PATH"
+
+# Output CSV
+output_csv="kms_usage_summary.csv"
+echo "KeyARN,Service,Region,WeekStart,UsageCount" > "$output_csv"
+
+# Get regions
+regions=$(aws ec2 describe-regions --query 'Regions[*].RegionName' --output text)
+
+# Time window: last 12 weeks
+start_time=$(date -u -d '12 weeks ago' +%Y-%m-%dT00:00:00Z)
+end_time=$(date -u +%Y-%m-%dT00:00:00Z)
+
+# Get all KMS key ARNs as JSON array
+kms_arns=$(for arn in $(aws kms list-keys --query 'Keys[*].KeyArn' --output text); do echo "\"$arn\""; done | jq -s .)
+
+for region in $regions; do
+  echo "Processing region: $region"
+
+  # Use CLI pagination and full output
+  aws cloudtrail lookup-events \
+    --lookup-attributes AttributeKey=EventSource,AttributeValue=kms.amazonaws.com \
+    --start-time "$start_time" --end-time "$end_time" \
+    --region "$region" \
+    --output json \
+    --no-cli-pager \
+  | jq -rc --argjson arns "$kms_arns" --arg region "$region" '
+      .Events[]
+      | .CloudTrailEvent
+      | fromjson
+      | select(.eventName | test("Encrypt|Decrypt|ReEncrypt|GenerateDataKey|GenerateDataKeyWithoutPlaintext|GenerateMac|VerifyMac|Sign|Verify"))
+      | {
+          keyarn: (
+            (.resources[]?.ARN // .requestParameters.keyId) // "unknown"
+          ),
+          service: (
+            .userIdentity.invokedBy //
+            .userIdentity.type //
+            "unknown"
+          ),
+          region: $region,
+          week: (
+            .eventTime
+            | strptime("%Y-%m-%dT%H:%M:%SZ")
+            | strftime("%G-W%V")
+          )
+        }
+    ' | jq -s '
+      group_by(.keyarn + .service + .region + .week)
+      | map({
+          keyarn: .[0].keyarn,
+          service: .[0].service,
+          region: .[0].region,
+          week: .[0].week,
+          count: length
+        })' \
+    | jq -rc '.[] | [.keyarn, .service, .region, .week, .count] | @csv' >> "$output_csv"
+done
+
+echo "Saved summary to $output_csv"
+
+
+```
+

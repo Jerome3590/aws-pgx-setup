@@ -1,0 +1,59 @@
+[
+  {
+    "Name": "MasterFleet",
+    "InstanceFleetType": "MASTER",
+    "TargetOnDemandCapacity": 1,
+    "TargetSpotCapacity": 0,
+    "InstanceTypeConfigs": [
+      {
+        "InstanceType": "x2iedn.xlarge",
+        "EbsConfiguration": {
+          "EbsBlockDeviceConfigs": [
+            {
+              "VolumeSpecification": {
+                "VolumeType": "gp2",
+                "SizeInGB": 192
+              },
+              "VolumesPerInstance": 4
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "Name": "CoreFleet",
+    "InstanceFleetType": "CORE",
+    "TargetOnDemandCapacity": 45,
+    "TargetSpotCapacity": 75,
+    "InstanceTypeConfigs": [
+      {
+        "InstanceType": "x2iedn.xlarge",
+        "WeightedCapacity": 16
+      },
+      {
+        "InstanceType": "x2idn.xlarge",
+        "WeightedCapacity": 8
+      },
+      {
+        "InstanceType": "r5b.2xlarge",
+        "WeightedCapacity": 8
+      },
+      {
+        "InstanceType": "r6id.xlarge",
+        "WeightedCapacity": 8
+      },
+      {
+        "InstanceType": "rxi.2xlarge",
+        "WeightedCapacity": 8
+      }
+    ],
+    "LaunchSpecifications": {
+      "SpotSpecification": {
+        "TimeoutDurationMinutes": 10,
+        "TimeoutAction": "SWITCH_TO_ON_DEMAND",
+        "AllocationStrategy": "capacity-optimized"
+      }
+    }
+  }
+]

@@ -1,0 +1,22 @@
+FROM public.ecr.aws/lambda/python:3.12
+
+WORKDIR ${LAMBDA_TASK_ROOT}
+
+# Install required Python packages
+RUN pip install duckdb==1.2.1 pyarrow==19.0.1 numpy==2.2.4 pandas==2.2.3 --target "${LAMBDA_TASK_ROOT}"
+
+# Preinstall DuckDB HTTPFS extension for S3 support in ${LAMBDA_TASK_ROOT}/extensions
+RUN mkdir -p ${LAMBDA_TASK_ROOT}/extensions 
+RUN python3 -c "import duckdb; duckdb.sql('INSTALL httpfs; LOAD httpfs;')"
+    
+# Copy the installed extension to correct location
+RUN cp -r ~/.duckdb/extensions ${LAMBDA_TASK_ROOT}/
+
+# Set environment variable for DuckDB to use the preinstalled extension
+ENV DUCKDB_EXTENSION_PATH="${LAMBDA_TASK_ROOT}/extensions"
+
+# Copy function code into the container
+COPY test_duckdb.py .
+
+# Command to run the Lambda function
+CMD [ "test_duckdb.lambda_handler" ]

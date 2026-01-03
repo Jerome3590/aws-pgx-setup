@@ -1,0 +1,100 @@
+[
+    {
+        "SubnetId": "subnet-0a8809358f7fef905",
+        "VpcId": "vpc-0ea3d9b6c6c64d0af",
+        "AvailabilityZone": "us-east-1b",
+        "CidrBlock": "172.31.16.0/20",
+        "PublicIP": false
+    },
+    {
+        "SubnetId": "subnet-00b406ef79eeca766",
+        "VpcId": "vpc-02d62275ede704f5d",
+        "AvailabilityZone": "us-east-1a",
+        "CidrBlock": "172.16.0.0/24",
+        "PublicIP": false
+    },
+    {
+        "SubnetId": "subnet-5de81a53",
+        "VpcId": "vpc-b4e8bdce",
+        "AvailabilityZone": "us-east-1f",
+        "CidrBlock": "172.31.48.0/20",
+        "PublicIP": false
+    },
+    {
+        "SubnetId": "subnet-7acdca54",
+        "VpcId": "vpc-b4e8bdce",
+        "AvailabilityZone": "us-east-1d",
+        "CidrBlock": "172.31.80.0/20",
+        "PublicIP": true
+    },
+    {
+        "SubnetId": "subnet-0c5fe99f96985fa7c",
+        "VpcId": "vpc-02d62275ede704f5d",
+        "AvailabilityZone": "us-east-1b",
+        "CidrBlock": "172.16.1.0/24",
+        "PublicIP": false
+    },
+    {
+        "SubnetId": "subnet-0802ec666c4a90f0d",
+        "VpcId": "vpc-0ea3d9b6c6c64d0af",
+        "AvailabilityZone": "us-east-1f",
+        "CidrBlock": "172.31.160.0/20",
+        "PublicIP": false
+    },
+    {
+        "SubnetId": "subnet-95cecbc9",
+        "VpcId": "vpc-b4e8bdce",
+        "AvailabilityZone": "us-east-1b",
+        "CidrBlock": "172.31.32.0/20",
+        "PublicIP": true
+    },
+    {
+        "SubnetId": "subnet-03f689fd2cb8cbb2c",
+        "VpcId": "vpc-0ea3d9b6c6c64d0af",
+        "AvailabilityZone": "us-east-1a",
+        "CidrBlock": "172.31.0.0/20",
+        "PublicIP": false
+    },
+    {
+        "SubnetId": "subnet-0c0e86106b994e07c",
+        "VpcId": "vpc-0ea3d9b6c6c64d0af",
+        "AvailabilityZone": "us-east-1a",
+        "CidrBlock": "172.16.0.0/20",
+        "PublicIP": true
+    },
+    {
+        "SubnetId": "subnet-5bfc3416",
+        "VpcId": "vpc-b4e8bdce",
+        "AvailabilityZone": "us-east-1a",
+        "CidrBlock": "172.31.16.0/20",
+        "PublicIP": true
+    },
+    {
+        "SubnetId": "subnet-5aaae664",
+        "VpcId": "vpc-b4e8bdce",
+        "AvailabilityZone": "us-east-1e",
+        "CidrBlock": "172.31.64.0/20",
+        "PublicIP": true
+    },
+    {
+        "SubnetId": "subnet-07950d9f2eb4d936d",
+        "VpcId": "vpc-b4e8bdce",
+        "AvailabilityZone": "us-east-1a",
+        "CidrBlock": "172.31.96.0/20",
+        "PublicIP": false
+    },
+    {
+        "SubnetId": "subnet-767e4611",
+        "VpcId": "vpc-b4e8bdce",
+        "AvailabilityZone": "us-east-1c",
+        "CidrBlock": "172.31.0.0/20",
+        "PublicIP": true
+    },
+    {
+        "SubnetId": "subnet-01f9c92e0b65cda10",
+        "VpcId": "vpc-02d62275ede704f5d",
+        "AvailabilityZone": "us-east-1d",
+        "CidrBlock": "172.16.2.0/24",
+        "PublicIP": false
+    }
+]

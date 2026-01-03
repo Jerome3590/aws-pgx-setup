@@ -1,0 +1,51 @@
+{
+  "SpotFleetRequestConfig": {
+    "IamFleetRole": "arn:aws:iam::535362115856:role/aws-ec2-spot-fleet-role",
+    "AllocationStrategy": "lowestPrice",
+    "TargetCapacity": 1,
+    "TerminateInstancesWithExpiration": true,
+    "Type": "persistent",
+    "LaunchSpecifications": [
+      {
+        "ImageId": "ami-0b86aaed8ef90e45f",
+        "InstanceType": "${instance_type}",
+        "KeyName": "mushin_pgx",
+        "SubnetId": "${subnet_id}", 
+        "SecurityGroups": [
+          {
+            "GroupId": "sg-07506ffd66bfd33b7"
+          }
+        ],
+        "BlockDeviceMappings": [
+          {
+            "DeviceName": "/dev/xvda",
+            "Ebs": {
+              "Encrypted": true,
+              "DeleteOnTermination": true,
+              "Iops": 3000,
+              "KmsKeyId": "alias/aws/ebs",
+              "VolumeSize": 97,
+              "VolumeType": "gp3",
+              "Throughput": 125
+            }
+          }
+        ],
+        "IamInstanceProfile": {
+          "Arn": "arn:aws:iam::535362115856:instance-profile/EC2_Spot"
+        },
+        "TagSpecifications": [
+          {
+            "ResourceType": "instance",
+            "Tags": [
+              {
+                "Key": "Name",
+                "Value": "ADE Model Builder"
+              }
+            ]
+          }
+        ],
+        "UserData": "${user_data_b64}"
+      }
+    ]
+  }
+}

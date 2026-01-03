@@ -1,0 +1,10 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "elasticmapreduce:AddTags",
+      "Resource": "arn:aws:elasticmapreduce:us-east-1:{aws_account_id}:cluster/*"
+    }
+  ]
+}

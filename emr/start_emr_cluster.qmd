@@ -1,0 +1,221 @@
+---
+title: "EMR Cluster"
+author: "Jerome Dixon"
+date: December 27, 2023
+editor: source
+format:
+  html:
+    toc: true
+    toc-depth: 4
+    html-math-method: katex
+    df-print: paged
+    embed-resources: true
+    fontsize: "11pt"
+    code-fold: true
+    code-summary: "Show the code"
+    smooth-scroll: true
+editor_options: 
+  chunk_output_type: inline
+execute:
+  echo: true
+  message: false
+  warning: false
+  eval: false
+---
+
+### GPU (PySpark boostrap)
+
+```{bash create-emr-cluster-gpu}
+
+aws emr create-cluster \
+ --name "PGx_Py_GPU" \
+ --log-uri "s3n://aws-logs-$aws_account-us-east-1/elasticmapreduce/" \
+ --release-label "emr-6.15.0" \
+ --service-role "arn:aws:iam::$aws_account:role/EMR_DefaultRole" \
+ --managed-scaling-policy '{"ComputeLimits":{"UnitType":"Instances","MinimumCapacityUnits":2,"MaximumCapacityUnits":4,"MaximumOnDemandCapacityUnits":3,"MaximumCoreCapacityUnits":3}}' \
+ --ec2-attributes '{"InstanceProfile":"EMR_EC2_DefaultRole","EmrManagedMasterSecurityGroup":"sg-063a1a27f01fac9b1","EmrManagedSlaveSecurityGroup":"sg-040af67bc708a5425","SubnetId":"subnet-07950d9f2eb4d936d"}' \
+ --applications Name=Hadoop Name=Spark \
+ --configurations '[{"Classification":"spark","Properties":{"enableSparkRapids":"true"}},{"Classification":"yarn-site","Properties":{"yarn.nodemanager.container-executor.class":"org.apache.hadoop.yarn.server.nodemanager.LinuxContainerExecutor","yarn.nodemanager.linux-container-executor.cgroups.hierarchy":"yarn","yarn.nodemanager.linux-container-executor.cgroups.mount":"true","yarn.nodemanager.linux-container-executor.cgroups.mount-path":"/sys/fs/cgroup","yarn.nodemanager.resource-plugins":"yarn.io/gpu","yarn.nodemanager.resource-plugins.gpu.allowed-gpu-devices":"auto","yarn.nodemanager.resource-plugins.gpu.path-to-discovery-executables":"/usr/bin","yarn.resource-types":"yarn.io/gpu"}},{"Classification":"container-executor","Configurations":[{"Classification":"gpu","Properties":{"module.enabled":"true"}},{"Classification":"cgroups","Properties":{"root":"/sys/fs/cgroup","yarn-hierarchy":"yarn"}}],"Properties":{}},{"Classification":"spark-defaults","Properties":{"spark.executor.cores":"2","spark.executor.extraLibraryPath":"/usr/local/cuda/targets/x86_64-linux/lib:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda/compat/lib:/usr/local/cuda/lib:/usr/local/cuda/lib64:/usr/lib/hadoop/lib/native:/usr/lib/hadoop-lzo/lib/native:/docker/usr/lib/hadoop/lib/native:/docker/usr/lib/hadoop-lzo/lib/native","spark.executor.memoryOverhead":"2G","spark.executor.resource.gpu.amount":"1","spark.executor.resource.gpu.discoveryScript":"/usr/lib/spark/scripts/gpu/getGpusResources.sh","spark.locality.wait":"0s","spark.plugins":"com.nvidia.spark.SQLPlugin","spark.rapids.memory.pinnedPool.size":"0","spark.rapids.sql.concurrentGpuTasks":"1","spark.sql.files.maxPartitionBytes":"512m","spark.sql.shuffle.partitions":"200","spark.submit.pyFiles":"/usr/lib/spark/jars/xgboost4j-spark_3.0-1.4.2-0.3.0.jar","spark.task.cpus":"1","spark.task.resource.gpu.amount":"0.5"}},{"Classification":"capacity-scheduler","Properties":{"yarn.scheduler.capacity.resource-calculator":"org.apache.hadoop.yarn.util.resource.DominantResourceCalculator"}},{"Classification":"spark-hive-site","Properties":{"hive.metastore.client.factory.class":"com.amazonaws.glue.catalog.metastore.AWSGlueDataCatalogHiveClientFactory"}}]' \
+ --instance-groups '[{"InstanceCount":1,"InstanceGroupType":"CORE","Name":"CORE","InstanceType":"g4dn.2xlarge","EbsConfiguration":{"EbsBlockDeviceConfigs":[]}},{"InstanceCount":1,"InstanceGroupType":"MASTER","Name":"MASTER","InstanceType":"m5.16xlarge","EbsConfiguration":{"EbsBlockDeviceConfigs":[{"VolumeSpecification":{"VolumeType":"gp2","SizeInGB":256},"VolumesPerInstance":4}]}}]' \
+ --bootstrap-actions '[{"Args":[],"Name":"emr_config","Path":"s3://pgx-terraform/emr-config/pgx_emr_gpu_bootstrap.sh"}]' \
+ --scale-down-behavior "TERMINATE_AT_TASK_COMPLETION" \
+ --ebs-root-volume-size "97" \
+ --region "us-east-1" \
+ --profile pgx
+
+```
+
+## M5.16XLarge EMR Cluster (PySpark bootsrap) 
+
+CatBoost not optimized for GPU. Using (1) m5.16xlarge Driver Node with (10) m5.16xlarge Core Node (CatBoost memory intensive)
+
+```{bash}
+
+aws emr create-cluster \
+ --name "PGx_PySpark" \
+ --log-uri "s3n://aws-logs-$aws_account-us-east-1/elasticmapreduce/" \
+ --release-label "emr-6.15.0" \
+ --service-role "arn:aws:iam::$aws_account:role/EMR_DefaultRole" \
+ --security-configuration "pgx_emr2" \
+ --managed-scaling-policy '{"ComputeLimits":{"UnitType":"Instances","MinimumCapacityUnits":2,"MaximumCapacityUnits":20,"MaximumOnDemandCapacityUnits":20,"MaximumCoreCapacityUnits":20}}' \
+ --termination-protected \
+ --ec2-attributes '{"InstanceProfile":"EMR_EC2_DefaultRole","EmrManagedMasterSecurityGroup":"sg-063a1a27f01fac9b1","EmrManagedSlaveSecurityGroup":"sg-040af67bc708a5425","AdditionalMasterSecurityGroups":[],"AdditionalSlaveSecurityGroups":[],"SubnetId":"subnet-07950d9f2eb4d936d"}' \
+ --applications Name=Ganglia Name=Hadoop Name=Hive Name=Spark \
+ --configurations '[{"Classification":"spark-hive-site","Properties":{"hive.metastore.client.factory.class":"com.amazonaws.glue.catalog.metastore.AWSGlueDataCatalogHiveClientFactory"}},{"Classification":"hive-site","Properties":{"hive.metastore.client.factory.class":"com.amazonaws.glue.catalog.metastore.AWSGlueDataCatalogHiveClientFactory"}}]' \
+ --instance-groups '[{"InstanceCount":10,"InstanceGroupType":"CORE","Name":"Core","InstanceType":"m5.16xlarge","EbsConfiguration":{"EbsBlockDeviceConfigs":[{"VolumeSpecification":{"VolumeType":"gp2","SizeInGB":256},"VolumesPerInstance":4}]}},{"InstanceCount":1,"InstanceGroupType":"MASTER","Name":"Primary","InstanceType":"m5.16xlarge","EbsConfiguration":{"EbsBlockDeviceConfigs":[{"VolumeSpecification":{"VolumeType":"gp3","Iops":3000,"SizeInGB":100,"Throughput":125},"VolumesPerInstance":1}]}},{"InstanceCount":5,"InstanceGroupType":"TASK","Name":"Task - 1","InstanceType":"m5.xlarge","EbsConfiguration":{"EbsBlockDeviceConfigs":[{"VolumeSpecification":{"VolumeType":"gp3","Iops":3000,"SizeInGB":100,"Throughput":125},"VolumesPerInstance":1}]}}]' \
+ --bootstrap-actions '[{"Args":[],"Name":"pgx","Path":"s3://pgx-terraform/emr-config/pgx_emr_bootstrap.sh"}]' \
+ --scale-down-behavior "TERMINATE_AT_TASK_COMPLETION" \
+ --ebs-root-volume-size "97" \
+ --auto-termination-policy '{"IdleTimeout":3600}' \
+ --region "us-east-1" \
+ --profile pgx
+
+```
+
+### M5.16XLarge EMR Cluster (Sparklyr/PySpark bootstrap with Python3.12) 
+
+```{bash}
+
+aws emr create-cluster \
+ --name "PGx_emR" \
+ --log-uri "s3n://aws-logs-$aws_account-us-east-1/elasticmapreduce/" \
+ --release-label "emr-6.15.0" \
+ --service-role "arn:aws:iam::$aws_account:role/EMR_DefaultRole" \
+ --security-configuration "pgx_emr2" \
+ --managed-scaling-policy '{"ComputeLimits":{"UnitType":"Instances","MinimumCapacityUnits":2,"MaximumCapacityUnits":20,"MaximumOnDemandCapacityUnits":20,"MaximumCoreCapacityUnits":20}}' \
+ --termination-protected \
+ --ec2-attributes '{"InstanceProfile":"EMR_EC2_DefaultRole","EmrManagedMasterSecurityGroup":"sg-063a1a27f01fac9b1","EmrManagedSlaveSecurityGroup":"sg-040af67bc708a5425","AdditionalMasterSecurityGroups":[],"AdditionalSlaveSecurityGroups":[],"SubnetId":"subnet-07950d9f2eb4d936d"}' \
+ --applications Name=Hadoop Name=Hive Name=Spark \
+ --configurations '[{"Classification":"spark-hive-site","Properties":{"hive.metastore.client.factory.class":"com.amazonaws.glue.catalog.metastore.AWSGlueDataCatalogHiveClientFactory"}},{"Classification":"hive-site","Properties":{"hive.metastore.client.factory.class":"com.amazonaws.glue.catalog.metastore.AWSGlueDataCatalogHiveClientFactory"}}]' \
+ --instance-groups '[{"InstanceCount":5,"InstanceGroupType":"CORE","Name":"Core","InstanceType":"m5.16xlarge","EbsConfiguration":{"EbsBlockDeviceConfigs":[{"VolumeSpecification":{"VolumeType":"gp2","SizeInGB":256},"VolumesPerInstance":4}]}},{"InstanceCount":1,"InstanceGroupType":"MASTER","Name":"Primary","InstanceType":"m5.16xlarge","EbsConfiguration":{"EbsBlockDeviceConfigs":[{"VolumeSpecification":{"VolumeType":"gp3","Iops":3000,"SizeInGB":100,"Throughput":125},"VolumesPerInstance":1}]}},{"InstanceCount":5,"InstanceGroupType":"TASK","Name":"Task - 1","InstanceType":"m5.16xlarge","EbsConfiguration":{"EbsBlockDeviceConfigs":[{"VolumeSpecification":{"VolumeType":"gp3","Iops":3000,"SizeInGB":100,"Throughput":125},"VolumesPerInstance":1}]}}]' \
+ --bootstrap-actions '[{"Args":[],"Name":"pgx","Path":"s3://pgx-repository/emr-config/pgx_ade_python312_bootstrap.sh"}]' \
+ --scale-down-behavior "TERMINATE_AT_TASK_COMPLETION" \
+ --ebs-root-volume-size "97" \
+ --auto-termination-policy '{"IdleTimeout":3600}' \
+ --region "us-east-1" \
+ --profile pgx
+
+```
+
+
+### Setup local environment 
+
+For passing commands between R and Bash environments
+
+```{r sync-renv-bash}
+
+library(jsonlite)
+library(here)
+
+cwd <- here::here()
+
+Sys.setenv("CWD"=cwd)
+
+```
+
+### Get EMR Cluster Info
+
+```{sh get-emr-cluster-id}
+
+aws emr list-clusters --active --profile pgx | tee ${CWD}/emr/cluster-config/cluster_info.json
+
+```
+
+
+```{r parse-emr-cluster-id}
+
+cluster_json <- read_json(here("emr","cluster-config","cluster_info.json"))
+
+cluster_id <- as.data.frame(cluster_json[["Clusters"]][[1]][["Id"]])
+
+names(cluster_id)  <- "cluster_id"
+
+write.table(cluster_id, here("emr","cluster-config","cluster_id.csv"), sep = ";", col.names = FALSE, row.names = FALSE)
+
+cluster_id
+
+# Save as environmental variable
+Sys.setenv("CLUSTER_ID"=cluster_id)
+
+```
+
+#### Cluster Configuration
+
+```{sh get-emr-cluster-config}
+
+aws emr describe-cluster --cluster-id ${CLUSTER_ID} --profile pgx | tee ${CWD}/emr/cluster-config/cluster_description.json
+
+```
+
+
+```{r read-emr-cluster-config}
+
+
+cluster_description_json <- read_json(here("emr","cluster-config","cluster_description.json"))
+
+
+```
+
+#### Cluster Head Node
+
+```{sh get-emr-head-node}
+
+aws emr list-instances --instance-group-type MASTER --cluster-id ${CLUSTER_ID} --profile pgx | tee ${CWD}/emr/cluster-config/emr_node.json
+
+```
+
+
+
+```{r parse-emr-head-node-info}
+
+emr_json <- read_json(here("emr","cluster-config","emr_node.json"))
+
+emr_dns <- emr_json[["Instances"]][[1]][["PublicDnsName"]]
+
+emr_instance_id <- emr_json[["Instances"]][[1]][["Ec2InstanceId"]]
+
+emr_instance_id <- as.data.frame(emr_instance_id)
+
+write.table(emr_instance_id, here("emr","cluster-config","emr_instance_id.csv"), sep = ";", col.names = FALSE, row.names = FALSE)
+
+emr_dns
+
+emr_instance_id
+
+Sys.setenv("EMR_NODE_ID"=emr_instance_id)
+
+```
+
+#### Allocate Elastic IP to AWS EMR Head Node
+
+```{sh allocate-elastic-ip}
+
+aws ec2 associate-address --instance-id ${EMR_NODE_ID} --allocation-id eipalloc-0d2b32dc1f19a9a4a --profile pgx
+
+```
+
+Setup your elastic IP or use EMR head node DNS. Don't forget to add :8787 at the end for RStudio port
+Wait for cluster to build... {about 45 mins}
+I have this setup for email notfication
+
+
+### Go to work!
+
+
+```{r emr-rstudio-ip}
+
+url <- "http://44.221.159.159:8787"
+
+browseURL(url)
+
+
+```
+
+
+For failed cluster starts:
+
+```{bash}
+
+aws emr describe-cluster --cluster-id ${CLUSTER_ID} --profile pgx | tee ${CWD}/cluster-config/bad_cluster_info.json
+
+```

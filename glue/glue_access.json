@@ -1,0 +1,17 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "glue:GetDatabases",
+        "glue:GetTables"
+      ],
+      "Resource": [
+        "arn:aws:glue:us-east-1:535362115856:catalog",
+        "arn:aws:glue:us-east-1:535362115856:database/*",
+        "arn:aws:glue:us-east-1:535362115856:table/*"
+      ]
+    }
+  ]
+}
