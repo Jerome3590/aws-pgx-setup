@@ -26,7 +26,8 @@ We use **persistent EC2 spot instances** with **idempotency built throughout** t
   - All required libraries and dependencies installed
   - Datasets pre-loaded on `/mnt` drive (instance storage)
   - Project code and configuration ready
-  - Jupyter Notebook pre-installed and configured
+  - Jupyter Lab pre-installed and configured in virtual environment (`~/jupyter-env`)
+  - Runs as user `pgx3874` with config at `~/.jupyter/jupyter_lab_config.py`
 
 ### Storage Architecture
 
@@ -194,44 +195,171 @@ We execute workflows from **Jupyter notebook terminal sessions** to leverage aut
    aws ec2 run-instances --subnet-id subnet-5de81a53 ...
    ```
 
-2. **Access Jupyter Notebook**:
-
-   - Navigate to `http://<instance-ip>:8888` (or configured port)
-   - Log in with your credentials
-   - Open a new terminal session from the Jupyter interface
-
-3. **Navigate to project directory**:
+2. **Associate Elastic IP** (recommended for persistent access):
 
    ```bash
+   # Get your Elastic IP allocation ID (if you have one)
+   # Check existing Elastic IPs
+   aws ec2 describe-addresses --query 'Addresses[*].[AllocationId,PublicIp,InstanceId]' --output table
+   
+   # Associate Elastic IP to your instance
+   aws ec2 associate-address \
+     --instance-id i-xxxxx \
+     --allocation-id eipalloc-xxxxx \
+     --allow-reassociation
+   
+   # Your Elastic IP will persist even if instance stops/starts
+   ```
+
+3. **Access Jupyter Lab**:
+
+   - Navigate to `http://<elastic-ip>:8888` (or `http://<instance-ip>:8888` if not using Elastic IP)
+   - Log in with your credentials
+   - Open a new terminal session from the Jupyter Lab interface
+
+4. **Navigate to project directory**:
+
+   ```bash
+   cd ~/pgx-analysis
+   # Or if using EBS mount point:
    cd /project/pgx-analysis
    ```
 
-4. **Run pipeline steps in parallel** (idempotent - will skip completed steps):
+   **Project folder structure** (matches workflow steps):
 
-   Open multiple terminal sessions in Jupyter and run different pipeline steps concurrently:
+   ```text
+   pgx-analysis/
+   ├── 1_apcd_input_data/          # Step 1: APCD data preprocessing (bronze → silver → gold)
+   ├── 2_create_cohort/            # Step 2: Cohort creation and QA
+   ├── 3_feature_importance/       # Step 3: MC-CV feature importance (aggregated importances)
+   ├── 4a_model_data/              # Step 4a: Model-ready event datasets (cases + controls)
+   ├── 4b_dtw_filter/              # Step 4b: DTW protocol filtering (administrative codes)
+   ├── 5_pgx_analysis/            # Step 5: PGx feature engineering
+   ├── 6_final_model/              # Step 6: Final model training (legacy/utilities)
+   ├── 6_final_model_selection/    # Step 6: Final model selection and evaluation (active)
+   ├── 7_ffa_analysis/             # Step 7: Formal Feature Attribution (FFA) analysis
+   ├── 8_shap_analysis/             # Step 8: SHAP-based post-model analysis
+   ├── 9_combined_shap_ffa/         # Step 9: Combined SHAP + FFA consensus analysis
+   ├── 10_risk_dashboard/           # Step 10: Risk dashboard (includes BupaR/FP-Growth/DTW visuals)
+   ├── archived/                    # Archived workflow steps (5a, 5b, 5d, 6a, 5_feature_engineering)
+   ├── utility_scripts/             # Workflow execution scripts (run_cohort_workflow.sh)
+   ├── py_helpers/                 # Shared Python utilities
+   ├── r_helpers/                  # Shared R utilities
+   └── docs/                       # Documentation
+   ```
 
-   **Terminal 1:**
+   **Note**: Old workflow folders (`5a_bupaR_analysis/`, `5b_fpgrowth_analysis/`, `5d_dtw_analysis/`, `6a_feature_encoding/`, `5_feature_engineering/`) have been moved to `archived/` as they are no longer part of the main workflow. Their visualization outputs are now integrated into Step 10 (Risk Dashboard). See `archived/README.md` for details.
+
+5. **Run initial data preparation** (if not already completed):
+
+   These steps prepare the raw data and create cohorts. Run once before cohort workflows:
 
    ```bash
+   # Step 1: Convert raw data to parquet format
    python 1_apcd_input_data/0_txt_to_parquet.py
-   ```
-
-   **Terminal 2:**
-
-   ```bash
+   
+   # Step 1b: Merge part files to bronze layer
    python 1_apcd_input_data/1b_merge_part_files_to_bronze.py
-   ```
-
-   **Terminal 3:**
-
-   ```bash
+   
+   # Step 2: Create cohorts (runs for all cohorts/age bands)
    python 2_create_cohort/0_create_cohort.py
    ```
+
+6. **Run pipeline workflows** (idempotent - will skip completed steps):
+
+   The workflow uses cohort-specific scripts that run the complete analysis pipeline. The pipeline uses **aggregated feature importances** (from Step 3) combined with **PGx features** (from Step 5c) - no feature encoding step is used. Open multiple terminal sessions in Jupyter Lab to run different cohorts/age bands in parallel:
+
+   **Terminal 1 - Run single cohort workflow:**
+
+   ```bash
+   cd ~/pgx-analysis
+   bash utility_scripts/run_cohort_workflow.sh opioid_ed 13-24
+   ```
+
+   **Terminal 2 - Run another cohort in parallel:**
+
+   ```bash
+   cd ~/pgx-analysis
+   bash utility_scripts/run_cohort_workflow.sh opioid_ed 25-44
+   ```
+
+   **Terminal 3 - Run non-opioid cohort:**
+
+   ```bash
+   cd ~/pgx-analysis
+   bash utility_scripts/run_cohort_workflow.sh non_opioid_ed 65-74
+   ```
+
+   **Available cohorts and age bands:**
+   - `opioid_ed`: 13-24, 25-44, 45-54, 55-64
+   - `non_opioid_ed`: 65-74, 75-84, 85-94
+
+   **Workflow steps** (automatically executed by script):
+   - **3**: Feature Importance (Monte Carlo CV) - Generates aggregated feature importances across models
+   - **4a**: Model Data Extraction - Creates model_events.parquet with cases + controls
+   - **4b**: DTW Protocol Filtering - Filters administrative/scheduling/non-medical codes
+   - **5**: PGx Feature Engineering - Adds pharmacogenomics features
+   - **6**: Final Model Training - Uses **aggregated feature importances + PGx features** (no encoding step)
+   - **7**: FFA Analysis - Uses best XGBoost model JSON
+   - **8**: SHAP Analysis - Uses best CatBoost model binary
+   - **9**: Combined SHAP + FFA
+   - **10**: Risk Dashboard - Includes BupaR, FP-Growth, and DTW visualizations (visuals only, not separate analysis steps)
+
+   **Note**: BupaR analysis (5a), FP-Growth analysis (5b), and DTW analysis (5d) are no longer separate workflow steps. These are now integrated as visualizations in Step 10 (Risk Dashboard).
 
    The idempotent checkpoint system ensures that:
    - Multiple terminals won't conflict (each checks for existing outputs)
    - Completed steps are automatically skipped
-   - Parallel execution maximizes CPU and memory utilization
+   - Parallel execution maximizes CPU and memory utilization across cohorts
+
+### Elastic IP Management
+
+**Benefits of using Elastic IP:**
+
+- **Static IP address** that persists across instance stop/start cycles
+- **Easy access** to Jupyter Lab without looking up new IPs
+- **Bookmark-friendly** URL that doesn't change
+- **Cost**: Free when associated with a running instance
+
+**Allocate a new Elastic IP** (if you don't have one):
+
+```bash
+# Allocate Elastic IP
+aws ec2 allocate-address --domain vpc --region us-east-1
+
+# Save the allocation ID for future use
+# Output will show: AllocationId and PublicIp
+```
+
+**Associate Elastic IP to instance:**
+
+```bash
+# Associate existing Elastic IP
+aws ec2 associate-address \
+  --instance-id i-xxxxx \
+  --allocation-id eipalloc-xxxxx \
+  --allow-reassociation
+
+# Verify association
+aws ec2 describe-addresses --allocation-ids eipalloc-xxxxx
+```
+
+**Reassociate Elastic IP after restart:**
+
+When you restart a stopped instance, it may get a new instance ID. Reassociate your Elastic IP:
+
+```bash
+# Get new instance ID
+INSTANCE_ID=$(aws ec2 describe-instances \
+  --filters "Name=instance-state-name,Values=running" \
+  --query 'Reservations[*].Instances[*].InstanceId' --output text)
+
+# Reassociate Elastic IP
+aws ec2 associate-address \
+  --instance-id $INSTANCE_ID \
+  --allocation-id eipalloc-xxxxx \
+  --allow-reassociation
+```
 
 ### Handling Interruptions
 
@@ -245,7 +373,20 @@ If the spot instance is interrupted:
    aws ec2 start-instances --instance-ids i-xxxxx
    ```
 
-4. **Resume workflow**: Pipeline will detect existing checkpoints and skip completed steps
+4. **Reassociate Elastic IP** (if using one):
+
+   ```bash
+   # Get the instance ID (may be different after restart)
+   aws ec2 describe-instances --query 'Reservations[*].Instances[*].[InstanceId,State.Name]' --output table
+   
+   # Reassociate Elastic IP
+   aws ec2 associate-address \
+     --instance-id i-xxxxx \
+     --allocation-id eipalloc-xxxxx \
+     --allow-reassociation
+   ```
+
+5. **Resume workflow**: Pipeline will detect existing checkpoints and skip completed steps
 
 ### Monitoring
 
@@ -253,6 +394,35 @@ If the spot instance is interrupted:
 
   ```bash
   aws ec2 describe-instances --instance-ids i-xxxxx --query 'Reservations[*].Instances[*].[State.Name,SpotInstanceRequestId]' --output table
+  ```
+
+- **Check Elastic IP association**:
+
+  ```bash
+  # List all Elastic IPs and their associations
+  aws ec2 describe-addresses --query 'Addresses[*].[AllocationId,PublicIp,InstanceId,AssociationId]' --output table
+  
+  # Check specific Elastic IP
+  aws ec2 describe-addresses --allocation-ids eipalloc-xxxxx
+  ```
+
+- **Check if Jupyter Lab is running** (SSH into instance first):
+
+  ```bash
+  # Check if Jupyter Lab process is running
+  ps aux | grep jupyter
+  # Expected output shows: jupyter-lab process running from ~/jupyter-env/bin/
+
+  # Check if Jupyter port (typically 8888) is listening
+  netstat -tlnp | grep 8888
+  # Or using ss command:
+  ss -tlnp | grep 8888
+
+  # Check if Jupyter is accessible via HTTP
+  curl -I http://localhost:8888
+
+  # Check Jupyter Lab config location
+  ls -la ~/.jupyter/jupyter_lab_config.py
   ```
 
 - **View spot pricing history**:
@@ -301,11 +471,205 @@ If the spot instance is interrupted:
 - Check file permissions on `/project` directory
 - Review logs for checkpoint validation errors
 
+### Jupyter Lab Not Running
+
+If Jupyter Lab is not accessible:
+
+1. **SSH into the instance** and check if Jupyter Lab process is running:
+
+   ```bash
+   ps aux | grep jupyter
+   # Should show: jupyter-lab process from ~/jupyter-env/bin/
+   ```
+
+2. **Check if port 8888 is listening**:
+
+   ```bash
+   netstat -tlnp | grep 8888
+   # Or:
+   ss -tlnp | grep 8888
+   ```
+
+3. **Start Jupyter Lab if not running**:
+
+   ```bash
+   # Activate the virtual environment and start Jupyter Lab
+   source ~/jupyter-env/bin/activate
+   jupyter-lab --config=~/.jupyter/jupyter_lab_config.py
+   
+   # Or run in background:
+   nohup ~/jupyter-env/bin/jupyter-lab --config=~/.jupyter/jupyter_lab_config.py > /tmp/jupyter.log 2>&1 &
+   ```
+
+4. **Check Jupyter Lab logs** for errors:
+
+   ```bash
+   # Check the process output/logs
+   tail -f /tmp/jupyter.log
+   
+   # Or check Jupyter's runtime directory
+   ls -la ~/.jupyter/
+   cat ~/.jupyter/jupyter_lab_config.py
+   ```
+
+5. **Verify security group** allows inbound traffic on port 8888
+
+6. **Check the Jupyter Lab config** for correct settings:
+
+   ```bash
+   cat ~/.jupyter/jupyter_lab_config.py
+   # Should have ServerApp.ip = '0.0.0.0' to allow external access
+   ```
+
 ### High Spot Interruption Rate
 
 - Monitor spot pricing trends
 - Consider using multiple availability zones
 - Use capacity-optimized allocation strategy for fleet launches
+
+## Git Repository Synchronization
+
+To keep the repository synchronized between your local Windows machine and the EC2 instance:
+
+### Windows → EC2 (Push from Windows, Pull on EC2)
+
+**On Windows:**
+
+```bash
+# Check status and stage changes
+git status
+git add .
+
+# Commit changes
+git commit -m "Your commit message"
+
+# Push to GitHub
+git push origin main
+# Or if using master branch:
+# git push origin master
+```
+
+**On EC2:**
+
+```bash
+# SSH into EC2
+ssh -i /path/to/your/key.pem pgx3874@<your-ec2-ip-or-hostname>
+
+# Navigate to project directory
+cd ~/pgx-analysis
+
+# Pull latest changes
+git pull origin main
+# Or if using master branch:
+# git pull origin master
+```
+
+### EC2 → Windows (Push from EC2, Pull on Windows)
+
+**On EC2:**
+
+```bash
+cd ~/pgx-analysis
+
+# Check status
+git status
+
+# Stage, commit, and push
+git add .
+git commit -m "EC2 changes: your commit message"
+git push origin main
+```
+
+**On Windows:**
+
+```bash
+# Pull latest changes
+git pull origin main
+```
+
+### Handling Out-of-Sync Situations
+
+#### Scenario 1: EC2 has uncommitted local changes and you want to pull latest from remote
+
+```bash
+# Check what's changed
+git status
+
+# Option 1: Commit your changes first (recommended if changes are important)
+git add .
+git commit -m "EC2 local changes: describe what you did"
+git pull origin main
+# If there are conflicts, resolve them, then:
+git add .
+git commit -m "Merge remote changes"
+git push origin main
+
+# Option 2: Stash changes temporarily (if you want to discard or review later)
+git stash
+git pull origin main
+git stash pop  # Reapply stashed changes if you want to keep them
+# If stash pop causes conflicts, resolve them manually
+```
+
+#### Scenario 2: EC2 is behind (no local changes, just needs to pull)
+
+```bash
+# Simply pull the latest
+git pull origin main
+```
+
+#### Scenario 3: EC2 has committed changes that conflict with remote
+
+```bash
+# Pull will trigger a merge
+git pull origin main
+
+# If conflicts occur:
+# 1. View conflicts
+git status
+
+# 2. Resolve conflicts in your editor
+# 3. Stage resolved files
+git add .
+
+# 4. Complete the merge
+git commit -m "Merge remote changes with EC2 local commits"
+
+# 5. Push the merged result
+git push origin main
+```
+
+#### Scenario 4: EC2 is ahead (has commits not on remote) and you want to push
+
+```bash
+# Check if you're ahead
+git status
+# Should show: "Your branch is ahead of 'origin/main' by X commits"
+
+# Push your commits
+git push origin main
+```
+
+### Checking Branch Status
+
+```bash
+# See current branch
+git branch
+# Current branch will have an asterisk (*)
+
+# Switch branches if needed
+git checkout main
+# or
+git checkout master
+```
+
+### Best Practices
+
+1. **Always pull before starting work** to ensure you have the latest changes
+2. **Commit frequently** with descriptive messages
+3. **Push after completing logical units of work**
+4. **Check `git status`** before pulling to see if you have uncommitted changes
+5. **Use the same branch** on both Windows and EC2 (typically `main` or `master`)
 
 ## Related Documentation
 
