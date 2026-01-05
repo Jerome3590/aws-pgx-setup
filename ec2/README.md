@@ -235,20 +235,16 @@ We execute workflows from **Jupyter notebook terminal sessions** to leverage aut
    ├── 4a_model_data/              # Step 4a: Model-ready event datasets (cases + controls)
    ├── 4b_dtw_filter/              # Step 4b: DTW protocol filtering (administrative codes)
    ├── 5_pgx_analysis/            # Step 5: PGx feature engineering
-   ├── 6_final_model/              # Step 6: Final model training (legacy/utilities)
-   ├── 6_final_model_selection/    # Step 6: Final model selection and evaluation (active)
+   ├── 6_final_model_selection/    # Step 6: Final model selection and evaluation
    ├── 7_ffa_analysis/             # Step 7: Formal Feature Attribution (FFA) analysis
    ├── 8_shap_analysis/             # Step 8: SHAP-based post-model analysis
    ├── 9_combined_shap_ffa/         # Step 9: Combined SHAP + FFA consensus analysis
    ├── 10_risk_dashboard/           # Step 10: Risk dashboard (includes BupaR/FP-Growth/DTW visuals)
-   ├── archived/                    # Archived workflow steps (5a, 5b, 5d, 6a, 5_feature_engineering)
    ├── utility_scripts/             # Workflow execution scripts (run_cohort_workflow.sh)
    ├── py_helpers/                 # Shared Python utilities
    ├── r_helpers/                  # Shared R utilities
    └── docs/                       # Documentation
    ```
-
-   **Note**: Old workflow folders (`5a_bupaR_analysis/`, `5b_fpgrowth_analysis/`, `5d_dtw_analysis/`, `6a_feature_encoding/`, `5_feature_engineering/`) have been moved to `archived/` as they are no longer part of the main workflow. Their visualization outputs are now integrated into Step 10 (Risk Dashboard). See `archived/README.md` for details.
 
 5. **Run initial data preparation** (if not already completed):
 
