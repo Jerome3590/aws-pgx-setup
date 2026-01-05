@@ -605,6 +605,17 @@ git stash
 git pull origin main
 git stash pop  # Reapply stashed changes if you want to keep them
 # If stash pop causes conflicts, resolve them manually
+
+# Option 3: Handle untracked files that conflict
+# If you see "untracked working tree files would be overwritten by merge":
+# Remove untracked files that conflict (they'll be recreated from remote)
+git clean -fd  # Remove untracked files and directories
+# OR move them to backup:
+mkdir -p ~/backup_untracked
+mv <conflicting_file> ~/backup_untracked/
+# Then stash and pull:
+git stash
+git pull origin main
 ```
 
 #### Scenario 2: EC2 is behind (no local changes, just needs to pull)
