@@ -84,6 +84,11 @@
 - Limited use - DuckDB is primary query engine
 - May be used for data cataloging in S3
 
+### AWS Lake Formation
+**Data lake permissions (effectively “turned off” for this project)**
+- We use IAM-only access to the Glue Data Catalog; Lake Formation fine-grained permissions are not used.
+- See **`lake_formation/README.md`** for lessons learned, best practices, and how we set IAM-only defaults and grant the Glue crawler role on existing databases (e.g. `pgxdatalake`).
+
 ## Local Services
 
 ### DuckDB
