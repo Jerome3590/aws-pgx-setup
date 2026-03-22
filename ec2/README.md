@@ -231,7 +231,7 @@ We execute workflows from **Jupyter notebook terminal sessions** to leverage aut
    pgx-analysis/
    ├── 1_apcd_input_data/          # Step 1: APCD data preprocessing (bronze → silver → gold)
    ├── 2_create_cohort/            # Step 2: Cohort creation and QA
-   ├── 3_feature_importance/       # Step 3: MC-CV feature importance (aggregated importances)
+   ├── 3a_feature_importance/     # Step 3a: MC-CV feature importance (aggregated importances)
    ├── 4a_model_data/              # Step 4a: Model-ready event datasets (cases + controls)
    ├── 4b_dtw_filter/              # Step 4b: DTW protocol filtering (administrative codes)
    ├── 5_pgx_analysis/            # Step 5: PGx feature engineering
