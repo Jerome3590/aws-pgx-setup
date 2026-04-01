@@ -24,8 +24,17 @@ REGION = "us-east-1"
 GLUE_DATABASE = "pgxdatalake"
 PHARMACY_DATABASES = ["bronze_pharmacy", "silver_pharmacy", "gold_pharmacy"]
 MEDICAL_DATABASES = ["bronze_medical", "silver_medical", "gold_medical"]
-GLUE_CRAWLER_ROLE_ARN = "arn:aws:iam::535362115856:role/service-role/AWSGlueServiceRole-pgx-data-model"
+GLUE_CRAWLER_ROLE_NAME = "service-role/AWSGlueServiceRole-pgx-data-model"
 DATABASE_PERMISSIONS = ["DESCRIBE", "ALTER", "CREATE_TABLE", "DROP"]
+
+
+def _build_crawler_role_arn() -> str:
+    account_id = os.environ.get("AWS_ACCOUNT_ID_PRIMARY")
+    if not account_id:
+        print("[ERROR] AWS_ACCOUNT_ID_PRIMARY environment variable is not set.", file=sys.stderr)
+        print("        Load it via: source aws-pgx-setup/env/load_env.sh", file=sys.stderr)
+        sys.exit(1)
+    return f"arn:aws:iam::{account_id}:{GLUE_CRAWLER_ROLE_NAME}"
 
 
 def _apply_credentials_dir(credentials_dir: str) -> None:
@@ -64,12 +73,14 @@ def main() -> int:
         action="store_true",
         help="Grant on all explicit medical databases: bronze_medical, silver_medical, gold_medical",
     )
-    parser.add_argument("--role-arn", default=GLUE_CRAWLER_ROLE_ARN, help="Glue crawler IAM role ARN")
+    parser.add_argument("--role-arn", default=None, help="Glue crawler IAM role ARN (default: built from AWS_ACCOUNT_ID_PRIMARY env var)")
     parser.add_argument("--dry-run", action="store_true", help="Print planned grant only, do not call API")
     args = parser.parse_args()
 
     if args.credentials_dir:
         _apply_credentials_dir(args.credentials_dir)
+
+    role_arn = args.role_arn or _build_crawler_role_arn()
 
     databases = []
     if args.all_pharmacy_databases:
@@ -84,11 +95,11 @@ def main() -> int:
     session = boto3.Session(profile_name=args.profile, region_name=REGION)
     lf = session.client("lakeformation", region_name=REGION)
 
-    principal = {"DataLakePrincipalIdentifier": args.role_arn}
+    principal = {"DataLakePrincipalIdentifier": role_arn}
     permissions = DATABASE_PERMISSIONS
 
     print("Planned GrantPermissions:")
-    print(f"  Principal: {args.role_arn}")
+    print(f"  Principal: {role_arn}")
     print(f"  Databases: {databases}")
     print(f"  Permissions: {permissions}")
 
