@@ -1,5 +1,34 @@
 # AWS Services Used in PGx Analysis Project
 
+## Architecture Status
+
+### Active (production)
+| Service | Role |
+|---|---|
+| **EC2** (NVMe spot instance) | Model training, pipeline runs, Docker builds |
+| **ECR** | Lambda container image storage (up to 10 GB) |
+| **Lambda** (Docker container) | Risk inference API — ensemble XGBoost/CatBoost per-bin models |
+| **API Gateway** | REST front door for Lambda (`/risk`, `/metadata`, `/visualizations/causal`, etc.) |
+| **S3** (`pgxdatalake`, `jerome-dixon.io`) | Data lake (bronze/silver/gold), static dashboard assets, model artifacts |
+| **CloudFront** (`E3MZK5HYTJ14P3`) | CDN for `jerome-dixon.io` dashboard with HTTPS and cache invalidation |
+| **Route 53** | Custom domain DNS for `jerome-dixon.io` |
+| **IAM** | Lambda execution roles, EC2 instance roles, cross-account S3 policies |
+| **SES** | Pipeline status email notifications |
+| **CloudWatch Logs** | Lambda log monitoring |
+
+### Archived (superseded — see `archive/`)
+| Service | Superseded by |
+|---|---|
+| **EMR** (Spark clusters) | EC2 + Python/DuckDB — no distributed compute needed at this scale |
+| **Glue** (crawlers, catalog) | Direct DuckDB → S3 Parquet queries; no Glue catalog needed |
+| **Lake Formation** | IAM-only S3 access; LakeFormation fine-grained permissions turned off |
+| **Athena** | DuckDB (faster, cheaper, no per-query cost) |
+| **QuickSight** | Custom `10_risk_dashboard` (Plotly + Lambda API) |
+| **Lambda DuckDB test** | Current ECR Lambda uses XGBoost/CatBoost, not DuckDB |
+| **CloudTrail** | Not actively maintained; CloudWatch Logs sufficient for Lambda monitoring |
+
+---
+
 ### AWS S3
 **Primary data storage and data lake**
 - Bucket: `pgxdatalake`
