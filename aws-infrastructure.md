@@ -100,3 +100,16 @@ pwsh.exe -ExecutionPolicy Bypass -File "/mnt/c/Projects/pgx-analysis/10_risk_das
 # Lambda — full rebuild + ECR push (EC2)
 bash 10_risk_dashboard/deployment/docker_build.sh
 ```
+
+## Git Authentication (WSL)
+
+`gh` (GitHub CLI) v2.4.0 is installed in WSL. Use it to fix HTTPS `git push` hanging when the credential cache is empty (affects secondary repos like `aws-pgx-setup`).
+
+**One-time setup:**
+```bash
+gh auth login
+# → GitHub.com → HTTPS → Paste an authentication token
+gh auth setup-git
+```
+
+After `gh auth setup-git`, all HTTPS GitHub remotes use `gh` as the credential helper — no per-repo config needed. Verify with `gh auth status`.
