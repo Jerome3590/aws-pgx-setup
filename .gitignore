@@ -27,4 +27,6 @@ cross_account/*
 /lambda/duckdb-layer/python/*
 rapids-cli/*
 
+archive/
+
 

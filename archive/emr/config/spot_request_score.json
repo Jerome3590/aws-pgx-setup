@@ -1,9 +1,0 @@
-{
-    "InstanceTypes": [
-        "x2iedn.xlarge",
-        "r5b.2xlarge",
-        "r6id.xlarge",
-        "r6i.2xlarge"
-    ], 
-    "TargetCapacity": 30
-}
