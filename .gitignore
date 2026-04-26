@@ -29,4 +29,14 @@ rapids-cli/*
 
 archive/
 
+# Jupyter notebooks — outputs embedded as JSON balloon on every run
+notebooks/jupyter/*.ipynb
+
+# AWS API dump exports — not hand-authored config, regenerate with aws cli
+ec2/ec2-config/ec2_description.json
+ec2/ec2-config/spot_m5.json
+
+# Instance-specific runtime IDs — environment state, not config
+ec2/*.txt
+
 
