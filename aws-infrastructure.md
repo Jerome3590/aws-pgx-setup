@@ -51,12 +51,9 @@ description: AWS infrastructure metadata for the PGx Risk Dashboard — account 
 
 ## EC2
 
-Both instances are **spot**, type `x2iedn.8xlarge`, region `us-east-1`.
-
-| Instance ID | Name | Purpose | Lifecycle |
-|---|---|---|---|
-| `i-0e7d1bd469620c0bb` | `pgx-analysis-1a` | Model training + artifact generation (notebooks 3–4) | spot |
-| `i-0c968462d413a1028` | `pgx-dashboard-1b` | Dashboard Docker builds + deployment | spot |
+No standing EC2. Rerun from stock Amazon Linux 2 + `aws-setup` bootstrap
+(`launch_pgx_session.sh`). Former boxes `i-0e7d1bd469620c0bb` and
+`i-0c968462d413a1028` were terminated after analysis completed (2026-09-04).
 
 | Resource | Value |
 |---|---|

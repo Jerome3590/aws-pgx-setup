@@ -109,16 +109,18 @@ aws ec2 describe-spot-price-history \
 
 ### Launch Command (Preferred Subnet)
 
+Preferred path is **aws-setup** (do not keep extra 197 GB roots):
+
 ```bash
-aws ec2 run-instances \
-  --image-id ami-02434e92bf508ded3 \
-  --instance-type x2iedn.8xlarge \
-  --subnet-id subnet-5de81a53 \
-  --security-group-ids sg-0eb0da772c42415dd \
-  --iam-instance-profile Name=EC2_Spot \
-  --instance-market-options 'MarketType=spot, SpotOptions={SpotInstanceType=persistent, InstanceInterruptionBehavior=stop}' \
-  --key-name mushin_pgx
+# from C:\Projects\aws-setup
+AWS_PROFILE=mushin bash ec2/scripts/bash/launch_pgx_session.sh
+# SSH, then:
+bash ec2/scripts/bash/clone_and_setup_pgx.sh
 ```
+
+Stock Amazon Linux 2 + `ec2/bootstrap/ec2_linux2_single.sh` user-data.
+No session AMI. Session root is 80 GB gp3, `DeleteOnTermination=true`.
+Gold/cohorts come from S3. First boot compiles R/Python (often 1-2 hours).
 
 ## Idempotency Design
 
