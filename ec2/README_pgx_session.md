@@ -32,13 +32,21 @@ emergencies, not the runbook.
    `sedvr-idle-stop-<id>` during bootstrap.
 5. **Wait** for SES “Bootstrap Completed” (or
    `python3.11 -c "import duckdb,pandas,boto3,pyarrow"`).
-6. **Clone + deps:** `clone_and_setup_pgx.sh` (recurse-submodules +
+6. **Mount NVMe (sudo) before the session wrap**, or the wrap must not
+   require `/mnt/nvme`. Waiters and job scripts call
+   `ec2/scripts/bash/mount_nvme.sh` (`mount_nvme_if_needed`: format only
+   if no filesystem, mount, chown `ec2-user`). Do **not** start a waiter
+   as `sudo -u ec2-user` unless `/mnt/nvme` is already mounted and
+   writable. Prefer a root waiter that drops to `ec2-user` for pip/job,
+   or mount first as root. Session wrap logs fall back to
+   `$HOME/pgx-analysis/logs` or `/tmp` if NVMe is not writable yet.
+7. **Clone + deps:** `clone_and_setup_pgx.sh` (recurse-submodules +
    `pip install -r requirements.txt` even if `jupyter-env` already exists).
    `preflight_pgx_python.sh` must print `pgx-imports-ok`. That check
    covers `py_helpers.common_imports` (`mlxtend`) and `aws_utils`
    (`psutil`).
-7. **Run** with `run_ec2_analysis_session.sh --job-name "..." -- <cmd>`.
-8. **Teardown order:** SES COMPLETE → cancel the **persistent** Spot
+8. **Run** with `run_ec2_analysis_session.sh --job-name "..." -- <cmd>`.
+9. **Teardown order:** SES COMPLETE → cancel the **persistent** Spot
    request → terminate → delete idle alarm → SES FINAL. Cancel the
    request first or the box comes back.
 
@@ -52,6 +60,7 @@ Push aws-pgx-setup + parent submodule pointer
   --> AL2023 AMI (chosen for requirements.txt) --> launch_pgx_session.sh
   --> EIP if no public IP; hold sedvr-idle-stop-<id>
   --> wait for Python 3.11 / SES "bootstrap" mail
+  --> mount_nvme.sh (sudo; before wrap; not as sudo -u ec2-user unless mounted)
   --> clone_and_setup_pgx.sh  (recurse-submodules + pip -r requirements.txt)
   --> preflight_pgx_python.sh  (mlxtend, psutil, duckdb, s3_utils)
   --> run_ec2_analysis_session.sh --job-name "..." -- <cmd>
@@ -65,8 +74,9 @@ the request, then terminate.
 
 ## Errors already paid for (do not repeat)
 
-Confirmed 2026-09-26 on `i-07d95a421d09f5bff` (AL2) and
-`i-0bdc2808cbf4b09f5` (AL2023):
+Confirmed 2026-09-26 on `i-07d95a421d09f5bff` (AL2),
+`i-0bdc2808cbf4b09f5` (AL2023 65-74), and
+`i-08d39967023dcc7a1` (AL2023 gold-cohort gaps):
 
 | What happened | Production rule |
 |---------------|-----------------|
@@ -79,6 +89,8 @@ Confirmed 2026-09-26 on `i-07d95a421d09f5bff` (AL2) and
 | Git Bash `/c/...` user-data unread by Windows Python | `launch_pgx_session.sh` uses `cygpath -w` (`USER_DATA_WIN`). |
 | Subnet assigned no public IP | Allocate/associate EIP; pass `EIP_ALLOCATION_ID` into cancel. |
 | Persistent Spot left active after terminate | `cancel_pgx_session.sh` cancels the request first. |
+| AL2023 default IMDSv2; unauthenticated IMDS curl is empty → `Instance=local` → skip destroy | Token then instance-id; fall back to the no-token URL only if empty; do not overwrite an env already set to `i-*`. |
+| Gaps waiter started as `sudo -u ec2-user`; wrap did `mkdir -p /mnt/nvme/pgx-analysis/logs` **before** the job’s sudo mount. `/mnt/nvme` did not exist → Permission denied → waiter exited, no gold-cohort job. 65-74 worked because start was `nohup bash /tmp/start_65_74.sh` as **root** (or NVMe already present). AL2023 `ln -sf python3.11` onto itself also `set -e`’d user-data (did not block Python; skipped later bootstrap). | Mount NVMe (sudo) before session wrap, **or** wrap must not require `/mnt/nvme` (`run_ec2_analysis_session.sh` falls back to `$HOME/pgx-analysis/logs` or `/tmp`). Do not start the waiter as `sudo -u ec2-user` unless `/mnt/nvme` is already mounted and writable. Prefer a root waiter that drops to `ec2-user` for pip/job, or mount first as root. Call `mount_nvme.sh` at waiter and job start. Only `ln -sf` python3.11 if dest differs. |
 
 ## Scripts
 
@@ -90,8 +102,11 @@ Confirmed 2026-09-26 on `i-07d95a421d09f5bff` (AL2) and
 | this repo | `ec2/scripts/bash/cancel_pgx_session.sh` | Cancel Spot, SES FINAL, terminate, optional EIP release |
 | this repo | `ec2/scripts/python/ec2_session_notify.py` | SES helper (`complete` / `error` / `shutdown`) |
 | this repo | `ec2/scripts/bash/preflight_pgx_python.sh` | Fail if submodule empty or `mlxtend`/`psutil`/helpers missing |
+| this repo | `ec2/scripts/bash/mount_nvme.sh` | `mount_nvme_if_needed`: sudo format-if-empty, mount `/mnt/nvme`, chown |
 | this repo | `ec2/scripts/bash/wait_bootstrap_and_run_65_74.sh` | One-job waiter (AL2023 production path, not an alternate pin set) |
+| this repo | `ec2/scripts/bash/wait_bootstrap_and_run_gaps.sh` | Gold-cohort gap waiter (55-64 / 85-114) |
 | `pgx-analysis` | `utility_scripts/run_opioid_65_74_cohort_and_transitions.sh` | One-band gold cohorts + DTW transitions |
+| `pgx-analysis` | `utility_scripts/run_gold_cohort_gaps.sh` | Gap bands gold cohorts + DTW transitions |
 
 User-data: `ec2/bootstrap/ec2_al2023_session.sh` (default) plus
 `ec2/bootstrap/install_r_rstudio.sh` (written to
@@ -225,7 +240,8 @@ On the box, after clone:
 
 ```bash
 export PGX_DATA_ROOT=/mnt/nvme
-# Mount unused NVMe if /mnt/nvme is empty (see setup_mnt_drive.sh).
+# Mount unused NVMe (sudo) before wrap, or wrap will log under $HOME /tmp:
+#   bash aws-pgx-setup/ec2/scripts/bash/mount_nvme.sh
 
 cd ~/pgx-analysis
 bash aws-pgx-setup/ec2/scripts/bash/run_ec2_analysis_session.sh \

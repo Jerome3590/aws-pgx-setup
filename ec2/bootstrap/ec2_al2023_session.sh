@@ -58,8 +58,31 @@ python3.11 -m pip install \
   boto3 certifi requests tenacity pyyaml jinja2 psutil mlxtend \
   s3fs fsspec openpyxl
 
-ln -sf "$(command -v python3.11)" /usr/local/bin/python3.11
-ln -sf "$(command -v python3.11)" /usr/bin/python3.11
+# Do not ln -sf python3.11 onto the same path (AL2023 set -e dies on
+# "are the same file" and skips the rest of user-data).
+_link_python311() {
+    local dest="$1"
+    local src
+    src="$(command -v python3.11 || true)"
+    [ -n "$src" ] || return 0
+    local src_real dest_real
+    src_real="$(readlink -f "$src" 2>/dev/null || echo "$src")"
+    dest_real="$(readlink -f "$dest" 2>/dev/null || echo "$dest")"
+    if [ "$src" = "$dest" ] || [ "$src_real" = "$dest_real" ]; then
+        return 0
+    fi
+    ln -sf "$src" "$dest"
+}
+_link_python311 /usr/local/bin/python3.11
+_link_python311 /usr/bin/python3.11
+unset -f _link_python311
+
+# Let a later ec2-user mkdir work even before instance-store format.
+# Do not format here (ephemeral + cloud-init risk). mount_nvme.sh does that.
+mkdir -p /mnt/nvme
+if id ec2-user >/dev/null 2>&1; then
+    chown ec2-user:ec2-user /mnt/nvme || true
+fi
 
 if [ ! -x /home/ec2-user/jupyter-env/bin/python ]; then
     python3.11 -m venv /home/ec2-user/jupyter-env

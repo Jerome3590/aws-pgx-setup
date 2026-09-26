@@ -35,7 +35,8 @@ fi
 JOB_NAME="${JOB_NAME:-pgx-analysis session}"
 KEEP_ALIVE="${KEEP_ALIVE:-0}"
 SHUTDOWN_ON_ERROR="${SHUTDOWN_ON_ERROR:-0}"
-LOG_DIR="${LOG_DIR:-${PGX_DATA_ROOT:-/mnt/nvme}/pgx-analysis/logs}"
+# Prefer PGX_DATA_ROOT /mnt/nvme, but never fail the wrap if that path is
+# missing or not writable (ec2-user cannot mkdir /mnt/nvme before sudo mount).
 INSTANCE_ID="${INSTANCE_ID:-}"
 
 while [[ $# -gt 0 ]]; do
@@ -76,12 +77,51 @@ if [[ -f "$PREFLIGHT" ]]; then
   REPO="$REPO" PY="$PY" bash "$PREFLIGHT"
 fi
 
-if [[ -z "$INSTANCE_ID" ]]; then
-  INSTANCE_ID="$(curl -s --connect-timeout 1 http://169.254.169.254/latest/meta-data/instance-id || true)"
+# AL2023 defaults to IMDSv2; unauthenticated IMDS curl is empty → do not
+# treat that as Instance=local when INSTANCE_ID is already i-*.
+if [[ ! "${INSTANCE_ID:-}" =~ ^i- ]]; then
+  TOKEN=$(curl -sS --connect-timeout 2 -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600' http://169.254.169.254/latest/api/token || true)
+  _imds_id=$(curl -sS --connect-timeout 2 -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id || true)
+  if [[ -z "$_imds_id" ]]; then
+    _imds_id=$(curl -sS --connect-timeout 2 http://169.254.169.254/latest/meta-data/instance-id || true)
+  fi
+  if [[ -n "$_imds_id" ]]; then
+    INSTANCE_ID="$_imds_id"
+  fi
+  unset TOKEN _imds_id
 fi
-INSTANCE_ID="${INSTANCE_ID:-local}"
+if [[ -z "${INSTANCE_ID:-}" ]]; then
+  INSTANCE_ID="local"
+fi
 
-mkdir -p "$LOG_DIR"
+# Session wrap must not require /mnt/nvme. If the default data root is the
+# NVMe mount and it is not writable yet, log under $HOME or /tmp.
+if [[ -z "${LOG_DIR:-}" ]]; then
+  _data_root="${PGX_DATA_ROOT:-/mnt/nvme}"
+  if [[ "$_data_root" == "/mnt/nvme" ]] && { [[ ! -d "$_data_root" ]] || [[ ! -w "$_data_root" ]]; }; then
+    LOG_DIR=""
+  else
+    LOG_DIR="${_data_root}/pgx-analysis/logs"
+  fi
+  unset _data_root
+fi
+if [[ -n "${LOG_DIR:-}" ]] && mkdir -p "$LOG_DIR" 2>/dev/null && [[ -w "$LOG_DIR" ]]; then
+  :
+else
+  LOG_DIR=""
+  for _cand in "${HOME}/pgx-analysis/logs" "/tmp/pgx-analysis/logs"; do
+    if mkdir -p "$_cand" 2>/dev/null && [[ -w "$_cand" ]]; then
+      LOG_DIR="$_cand"
+      break
+    fi
+  done
+  unset _cand
+  if [[ -z "$LOG_DIR" ]]; then
+    echo "ERROR: no writable log dir (tried HOME and /tmp); NVMe not required" >&2
+    exit 1
+  fi
+  echo "WARN: using LOG_DIR=$LOG_DIR (PGX_DATA_ROOT not writable yet)"
+fi
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 LOG="$LOG_DIR/session_${STAMP}.log"
 START_EPOCH="$(date +%s)"

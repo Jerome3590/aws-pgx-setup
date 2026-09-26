@@ -52,8 +52,17 @@ aws_() {
   fi
 }
 
-if [[ -z "$INSTANCE_ID" ]]; then
-  INSTANCE_ID="$(curl -s --connect-timeout 1 http://169.254.169.254/latest/meta-data/instance-id || true)"
+# AL2023 IMDSv2: hop token first. Do not overwrite an env already set to i-*.
+if [[ ! "${INSTANCE_ID:-}" =~ ^i- ]]; then
+  TOKEN=$(curl -sS --connect-timeout 2 -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600' http://169.254.169.254/latest/api/token || true)
+  _imds_id=$(curl -sS --connect-timeout 2 -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id || true)
+  if [[ -z "$_imds_id" ]]; then
+    _imds_id=$(curl -sS --connect-timeout 2 http://169.254.169.254/latest/meta-data/instance-id || true)
+  fi
+  if [[ -n "$_imds_id" ]]; then
+    INSTANCE_ID="$_imds_id"
+  fi
+  unset TOKEN _imds_id
 fi
 if [[ -z "$INSTANCE_ID" && -z "$SPOT_REQUEST_ID" ]]; then
   echo "Set INSTANCE_ID and/or SPOT_REQUEST_ID" >&2
