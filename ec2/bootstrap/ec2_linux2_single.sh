@@ -58,7 +58,7 @@ if [ ! -d "/usr/local/openssl" ]; then
     rm -rf /usr/local/openssl-1.1.1q
 fi
 
-send_email "OpenSSL Installed on $INSTANCE_ID" "Starting R/RStudio install..."
+send_email "OpenSSL Installed on $INSTANCE_ID" "Continuing bootstrap (Python/DuckDB; R only if INSTALL_R=1)."
 
 # Create and set permissions for DUCKDB Local Directory if not already exists
 if [ ! -d "/home/.duckdb/" ]; then
@@ -76,19 +76,22 @@ export LD_LIBRARY_PATH=/usr/local/openssl/lib
 export CPPFLAGS="-I/usr/local/openssl/include"
 export LDFLAGS="-L/usr/local/openssl/lib"
 
+USER="pgx3874"
+TARGET_DIR="/home/$USER/"
+if ! id "$USER" >/dev/null 2>&1; then
+    adduser $USER
+    mkdir -p $TARGET_DIR
+    chmod -R 777 $TARGET_DIR
+    chown -R $USER:$USER $TARGET_DIR
+    usermod -aG wheel "$USER"
+fi
+
+# R is opt-in. INSTALL_R=1 (or /usr/local/sbin/install_r_rstudio.sh) for BupaR.
+if [ "${INSTALL_R:-0}" = "1" ]; then
 # R Installation/Setup
 cd /usr/local
 rver=4.4.3
 rspkg=rstudio-server-rhel-2023.12.0-369-x86_64.rpm
-rspasswd=Trick90**ZX#
-USER="pgx3874"
-TARGET_DIR="/home/$USER/"
-adduser $USER
-mkdir -p $TARGET_DIR
-chmod -R 777 $TARGET_DIR
-chown -R $USER:$USER $TARGET_DIR
-sh -c "echo '$rspasswd' | passwd pgx3874 --stdin"
-usermod -aG wheel "$USER"
 yum update -y
 yum install -y bzip2-devel cairo-devel \
      gcc gcc-c++ gcc-gfortran libXt-devel cmake \
@@ -96,7 +99,7 @@ yum install -y bzip2-devel cairo-devel \
      pango-devel pango libicu-devel wget git \
      libtiff-devel pcre2-devel readline-devel jq \
      texinfo texlive-collection-fontsrecommended \
-	   xz-devel libxml2-devel zlib-devel libcurl-devel
+	   xz-devel libxml2-devel zlib-devel libcurl-devel libuv-devel
 amazon-linux-extras install -y epel
 yum install -y https://apache.jfrog.io/artifactory/arrow/amazon-linux/2/apache-arrow-release-latest.rpm
 yum install -y --enablerepo=epel arrow-devel 
@@ -140,10 +143,11 @@ rstudio-server start
 /usr/local/bin/R --no-save <<R_SCRIPT
 Sys.setenv(TZ='Etc/UCT')
 install.packages(c('reticulate','rmarkdown','caret','purrr','dplyr','tidyr','here', 'deSolve','ggplot2'), repos="http://cran.rstudio.com")
-install.packages('bupaverse')
+install.packages('bupaverse', repos="http://cran.rstudio.com")
 R_SCRIPT
 
 send_email "RStudio Server Installed on $INSTANCE_ID" "RStudio Server has been successfully installed and started on instance: $INSTANCE_ID."
+fi # INSTALL_R=1
 
 
 # AWS CLI Installation

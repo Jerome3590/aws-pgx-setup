@@ -51,8 +51,9 @@ description: AWS infrastructure metadata for the PGx Risk Dashboard — account 
 
 ## EC2
 
-No standing EC2. Rerun from stock Amazon Linux 2 + `aws-setup` bootstrap
-(`launch_pgx_session.sh`). Former boxes `i-0e7d1bd469620c0bb` and
+No standing EC2. Rerun from Amazon Linux 2023 + `aws-pgx-setup` bootstrap
+(`ec2/scripts/bash/launch_pgx_session.sh`; OS chosen for `requirements.txt` —
+see `ec2/README_os_and_libraries.md`). Former boxes `i-0e7d1bd469620c0bb` and
 `i-0c968462d413a1028` were terminated after analysis completed (2026-09-04).
 
 | Resource | Value |

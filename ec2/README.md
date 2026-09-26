@@ -1,4 +1,12 @@
-# EC2 Workflow Execution - Final Solution
+# EC2 Workflow Execution
+
+**Final production path (2026-09):** from-scratch Amazon Linux 2023
+sessions. Runbook: [`README_pgx_session.md`](README_pgx_session.md). OS
+from libraries: [`README_os_and_libraries.md`](README_os_and_libraries.md).
+
+Do **not** keep a session AMI, a standing 1 TB box, or a 197 GB root.
+Gold/cohorts come from S3. The AMI / “pre-loaded `/mnt`” / 8xlarge-as-default
+sections below are **historical** — do not launch from them.
 
 This document describes our production-ready EC2 workflow execution solution for the PGx analysis pipeline.
 
@@ -109,18 +117,22 @@ aws ec2 describe-spot-price-history \
 
 ### Launch Command (Preferred Subnet)
 
-Preferred path is **aws-setup** (do not keep extra 197 GB roots):
+Preferred path is **aws-pgx-setup** (do not keep extra 197 GB roots):
 
 ```bash
-# from C:\Projects\aws-setup
+# from this repo (or pgx-analysis/aws-pgx-setup)
 AWS_PROFILE=mushin bash ec2/scripts/bash/launch_pgx_session.sh
 # SSH, then:
 bash ec2/scripts/bash/clone_and_setup_pgx.sh
 ```
 
-Stock Amazon Linux 2 + `ec2/bootstrap/ec2_linux2_single.sh` user-data.
+Amazon Linux 2023 + `ec2/bootstrap/ec2_al2023_session.sh` user-data.
 No session AMI. Session root is 80 GB gp3, `DeleteOnTermination=true`.
-Gold/cohorts come from S3. First boot compiles R/Python (often 1-2 hours).
+Gold/cohorts come from S3. First boot compiles Python/DuckDB (often ~1 hour).
+R/RStudio only if `INSTALL_R=1` (BupaR / r_helpers), or later via
+`sudo bash /usr/local/sbin/install_r_rstudio.sh`.
+Wrap the job with `ec2/scripts/bash/run_ec2_analysis_session.sh` so SES sends
+a COMPLETE summary and a FINAL email after Spot cancel + terminate.
 
 ## Idempotency Design
 
